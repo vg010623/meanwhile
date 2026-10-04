@@ -2,53 +2,138 @@
 
 Learn AI fundamentals in the seconds and minutes you spend waiting on Claude Code.
 
-`meanwhile` runs in a split pane next to Claude Code. It stays quiet until Claude
-starts working, then shows a short first-principles lesson card (20 to 40
-seconds). When Claude finishes or needs you, it tells you, so you get back to
-work on time.
+When you give Claude Code a prompt, you wait. Most of us reach for our phone, and then come back late with the thread lost. `meanwhile` runs in a split pane next to Claude. It stays quiet until Claude starts working, then shows a short lesson card, readable in 20 to 40 seconds, about how AI actually works: models, tokens, embeddings, attention, context windows, agents. When Claude finishes or needs you, it says so clearly, and you go back to work on time.
 
-> **Status:** early development. Only the curriculum format and validator exist
-> so far. See the milestones below.
+```
+● Claude is working · 0m 41s · my-app
+
+Tokens · card 2 of 4
+
+Why not whole words?
+
+A vocabulary of every word would be huge and would still miss new
+ones. Tokens split text into common pieces instead…
+
+enter next · ← back · i I know this · d go deeper · s skip · x Claude's done · q quit
+```
+
+## Install
+
+macOS with Homebrew:
+
+```sh
+brew install --cask vg010623/tap/meanwhile
+```
+
+Anywhere with Go 1.27+:
+
+```sh
+go install github.com/vg010623/meanwhile/cmd/meanwhile@latest
+```
+
+Or download a binary from the [releases page](https://github.com/vg010623/meanwhile/releases).
+
+## Set up
+
+```sh
+meanwhile setup      # adds a few hooks to ~/.claude/settings.json (shows the change first)
+meanwhile            # run this in a split pane or a second terminal tab
+```
+
+`setup` keeps your existing hooks and settings, saves a backup of the old file, and shows exactly what it will add before writing anything. `meanwhile doctor` checks that everything is connected.
 
 ## How it works
 
-1. `meanwhile setup` adds a few hooks to `~/.claude/settings.json`.
-2. Claude Code runs `meanwhile hook` at key moments (prompt sent, finished,
-   needs permission). The hook writes one line to a local log file and exits.
-   It prints nothing and never changes what Claude does.
-3. The `meanwhile` app in your split pane watches that log and shows lessons
-   only while Claude is actually working.
+1. **Claude Code rings a doorbell.** At certain moments (you sent a prompt, Claude finished, Claude needs permission), Claude Code runs `meanwhile hook`. The hook gets a short note saying which session and folder it is, writes one line to a local log file, and exits. That takes about 4 ms. It prints nothing and never changes what Claude does. Your prompt text is never stored.
+2. **The app watches the log.** The `meanwhile` app in your split pane reads each new line and tracks Claude's state for each session: working, waiting for you, or done.
+3. **Lessons only while Claude is working.** After 4 seconds of work (so quick answers never flash a card), a lesson appears. If Claude stops to ask for permission or a question, the lesson hides and you see **⚠ Claude needs your input**, because that's your cue to go back. When Claude finishes, a banner says **✔ Claude finished**, and you can finish the card or close it.
 
-Everything stays on your machine. There is no telemetry. The only network call
-is the optional "Go deeper" feature, which runs your own installed `claude`.
+Pressing Esc or Ctrl+C in Claude doesn't trigger any hook, so `meanwhile` works it out a little later. It notices when you send your next prompt, or when Claude reports it has gone idle about a minute after. You can also press `x` to say Claude is done.
 
-## Writing curriculum
+## Using it
 
-Concepts are Markdown files in [`content/concepts/`](content/concepts). See
-[docs/content-format.md](docs/content-format.md) for the format, then check your
-work:
+| Key | What it does |
+|---|---|
+| `enter` | Continue where you left off, open a card, next card |
+| `p` / `b` | Pick another concept / browse all concepts |
+| `i` | "I know this": mark a concept done and unlock what builds on it |
+| `d` | Go deeper: ask Claude to explain the card further (see below) |
+| `D` | Saved deeper explanations for this concept |
+| `s` | Skip this wait (no penalty, nothing recorded as missed) |
+| `x` | Close the lesson, or tell meanwhile Claude is done |
+| `q` | Quit |
+
+The picker suggests up to five concepts you're ready for: concepts whose prerequisites you've done, most useful first. You can open any concept. If it builds on something you haven't done, you get a one-line note and can carry on anyway.
+
+`meanwhile stats` shows your total wait time, concepts completed and cards read.
+
+### Go deeper
+
+On any card, press `d` to have Claude explain it in more depth, matched to what you've already learned. You can ask up to two follow-up questions. The first time, `meanwhile` explains what this does and asks which model to use.
+
+- It runs **your own** installed Claude Code (`claude -p`) with your subscription or API usage. `meanwhile` never sees or stores any key.
+- It runs in an empty folder with **every tool switched off**, so it can't read or change your files.
+- Answers are saved locally against the concept.
+
+## Configuration
+
+Everything works without a config file. To change defaults, create `~/.config/meanwhile/config.toml`:
+
+```toml
+min_wait_seconds = 4          # how long Claude must work before a lesson appears
+still_working_minutes = 10    # ask "still working?" after this long with no sign of Claude
+bell = "needs_input"          # ring the terminal bell: "needs_input", "always" or "never"
+ignore_dirs = ["~/ci"]        # never wake for Claude runs started in these folders
+content_dir = "~/my-lessons"  # load concept files from here (for writing lessons)
+
+[deeper]
+model = "haiku"               # model for Go deeper; overrides the choice made on first use
+```
+
+Runs started by scripts (`claude -p`) are recognised and never wake the app.
+
+## Privacy
+
+Everything stays on your machine:
+
+- **Log of Claude events:** `~/.local/state/meanwhile/spool/`. Session ID, folder and timestamps; never your prompt. Files are deleted after 7 days.
+- **Progress, wait history and saved answers:** `~/.local/state/meanwhile/state.db`, with a daily backup next to it.
+- **Settings:** `~/.config/meanwhile/`.
+
+There is no telemetry. The only network traffic is the "Go deeper" call you start yourself, which goes through your own `claude`.
+
+## Uninstall
 
 ```sh
-go run ./cmd/meanwhile content check
-go run ./cmd/meanwhile content check --dir path/to/drafts
+meanwhile uninstall           # removes only meanwhile's hooks, even if you've edited the file since
+meanwhile uninstall --purge   # also deletes progress and history
 ```
+
+Then remove the binary (`brew uninstall --cask meanwhile`, or delete it).
+
+## Writing lessons
+
+Lessons are plain Markdown files in [`content/concepts/`](content/concepts), one file per concept with 3 to 5 cards. See [docs/content-format.md](docs/content-format.md) and [CONTRIBUTING.md](CONTRIBUTING.md). The current lessons are placeholders while the real curriculum is being written.
 
 ## Development
 
 ```sh
-go test ./...
+go test -race ./...
+go run ./cmd/meanwhile content check
 ```
 
-## Milestones
+Try it without touching your real setup:
 
-- [x] M0: repo skeleton, curriculum format and validator
-- [ ] M1: hook, log file, `setup` / `uninstall` / `doctor`
-- [ ] M2: wait detection and storage
-- [ ] M3: terminal UI shell
-- [ ] M4: learning activity (picker, cards, resume, "I know this")
-- [ ] M5: "Go deeper"
-- [ ] M6: hardening and first release
+```sh
+export MEANWHILE_HOME=$(mktemp -d)       # keeps all meanwhile data in a temp folder
+go build -o /tmp/mw ./cmd/meanwhile
+/tmp/mw                                  # in one terminal
+/tmp/mw simulate start                   # in another: pretend Claude started working
+/tmp/mw simulate input | resume | end    # needs input, working again, finished
+```
+
+The architecture, from hooks to activities, is described in [docs/plan.md](docs/plan.md). Behaviour verified against real Claude Code is in [docs/claude-code-behaviour.md](docs/claude-code-behaviour.md).
 
 ## License
 
-Code: [MIT](LICENSE). Curriculum: [CC BY 4.0](content/LICENSE).
+Code: [MIT](LICENSE). Lesson content: [CC BY 4.0](content/LICENSE).

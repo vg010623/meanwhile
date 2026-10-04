@@ -64,6 +64,9 @@ type view struct {
 func (v *view) Init() tea.Cmd   { return nil }
 func (v *view) Capturing() bool { return v.screen == scrDeeper && v.deep.typing }
 func (v *view) Save() error {
+	if v.screen == scrDeeper && v.deep.streaming {
+		v.closeDeeper() // keeps the partial answer
+	}
 	v.deep.cancel()
 	return nil // progress is written as it happens
 }

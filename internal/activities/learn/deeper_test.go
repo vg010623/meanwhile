@@ -133,3 +133,20 @@ func TestConfigModelOverrides(t *testing.T) {
 		t.Errorf("model %q", f.fd.reqs[0].Model)
 	}
 }
+
+func TestSkipDuringDeeperKeepsPartial(t *testing.T) {
+	f := newFixture(t)
+	f.a.ctx.DB.SetKV(kvNamespace, kvConsent, "yes")
+	f.fd.respond = func(deeper.Request) []deeper.Event {
+		return []deeper.Event{{Kind: deeper.Text, Text: "Partial"}}
+	}
+	v := f.start()
+	press(v, "enter", "d")
+	v.deep.streaming = true
+	v.Save() // the shell calls Save on skip and quit
+	var status string
+	f.db.QueryRow(`SELECT status FROM learn_deep_dives`).Scan(&status)
+	if status != "cancelled" {
+		t.Errorf("status %q", status)
+	}
+}

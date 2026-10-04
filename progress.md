@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**M0–M5 done.** Next: **M6: hardening, README, GoReleaser config and release workflow.**
+**All milestones M0–M6 done. v1 is feature-complete.** The remaining steps need the owner (see "What's left" below).
 
 ## What the project is (30 seconds)
 
@@ -30,7 +30,22 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 - [x] **M3**: `internal/config` (TOML, defaults, `Ignored`), `internal/activity` (Activity/View interface, `DoneMsg`), `internal/shell` (Bubble Tea model: asleep/pending/awake × idle/working/blocked/finished, grace wake, needs-input screen hides the lesson, banners, `s` skip, `x` close or manual done, `enter` lesson on demand when asleep, other-session count, still-working prompt, compact mode, fsnotify plus 1 s tick sync). Not yet wired into `cmdUI`; the single-instance lock goes there.
 - [x] **M4**: `internal/activities/learn`: `progress.go` (learn_* tables, write-through progress), `graph.go` (ready / recommend by transitive unlocks, then order, then title / unmet / byTrack / cardIndex by ID with index fallback), `view.go` (screens: home Continue + recap, picker, browse with ✓◐○·, soft note, card with scroll, complete with unlocks), `text.go` (small Markdown renderer, 72-column cap), `Stats()`. `cmdUI` is wired: UI lock, config, DB, daily backup, activity Init, `shell.Run`.
 - [x] **M5**: `internal/deeper` (`Runner.Ask`, stream-json parser, error classification, first-byte and total timeouts, process-group cancel). `learn/deeper_view.go`: one-time consent screen with model choice (default / Sonnet / Haiku, stored in kv; config `[deeper] model` overrides), streaming, Esc cancel keeps the partial answer as `cancelled`, 2 stateless follow-ups, saved threads (`D` history, read-only), errors fall back to the cards. Verified against real Claude (see `docs/claude-code-behaviour.md`).
-- [ ] **M6**: hardening, README, GoReleaser config, release workflow.
+- [x] **M6**: skip or quit during Go deeper keeps the partial answer; raw events pruned after 30 days (core migration v2 adds an index on `events.ts`); `.goreleaser.yaml` (darwin and linux, amd64 and arm64, CGO off, `homebrew_casks` to vg010623/homebrew-tap, skipped without `HOMEBREW_TAP_GITHUB_TOKEN`); `.github/workflows/release.yml` on `v*` tags; full README; CONTRIBUTING. Verified: `goreleaser check` passes, snapshot build works, CI is green on macOS and Linux, real-pty smoke tests pass (full flow, single-instance lock, NO_COLOR, compact).
+
+## What's left (needs the owner)
+
+1. **Write the curriculum.** Replace the three PLACEHOLDER concepts in `content/concepts/`. Set `content_dir` in config to preview drafts live.
+2. **Install for real:** `go install ./cmd/meanwhile && meanwhile setup`. This edits the real `~/.claude/settings.json`, so the owner should run it.
+3. **Manually verify the interactive-only behaviours** listed under "From the docs, not yet verified by hand" in `docs/claude-code-behaviour.md`: Esc/Ctrl+C, `idle_prompt` after an interrupt, `PermissionRequest`, `AskUserQuestion`. Then move them to the verified section.
+4. **Go public:** `gh repo edit vg010623/meanwhile --visibility public --accept-visibility-change-consequences`.
+5. **Homebrew:** create the repo `vg010623/homebrew-tap` and add a repo secret `HOMEBREW_TAP_GITHUB_TOKEN` (a token with contents:write on the tap).
+6. **Release:** `git tag v0.1.0 && git push --tags`.
+
+## Ideas for after v1 (from the plan)
+
+- The "predict which files Claude will change" activity: a new package in `internal/activities/`, registered in `cmd/meanwhile/app.go`. `WaitInfo.WorktreeRoot` is already passed in.
+- A multi-session view: data already carries `session_id` and `worktree_root`, so this is UI work only.
+- Code-signing the macOS binary, so the cask's quarantine workaround can go.
 
 ## How the pieces fit (code map)
 
@@ -69,3 +84,5 @@ tmux isn't installed; use `expect`. A session that passed: sleep → `simulate s
 - macOS has no `timeout` command, and zsh globs fail when nothing matches; in scripts use `ls | while read`.
 - Spool events are sorted by timestamp with a stable sort, so ties keep their write order. IDs have a random suffix, so sorting by ID breaks ties at random.
 - `store.Open` uses `SetMaxOpenConns(1)`. Don't hold a `rows` open while running another query on the same DB, or it deadlocks.
+- Homebrew casks are macOS-only; Linux users install from the tarball or with `go install`. GoReleaser has deprecated `brews` in favour of `homebrew_casks`.
+- Under NO_COLOR, `ESC[30;H` in output is cursor positioning, not colour. Don't mistake it for a NO_COLOR bug.

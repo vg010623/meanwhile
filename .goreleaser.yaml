@@ -1,0 +1,66 @@
+# Release config: `git tag v0.1.0 && git push --tags` runs .github/workflows/release.yml,
+# which builds these binaries and publishes a GitHub release.
+version: 2
+project_name: meanwhile
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - main: ./cmd/meanwhile
+    binary: meanwhile
+    env:
+      - CGO_ENABLED=0 # pure Go (the SQLite driver too), so cross-compiling just works
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - src: content/LICENSE
+        dst: LICENSE-CONTENT
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:"]
+
+# Homebrew (macOS): publishes a cask to github.com/vg010623/homebrew-tap when
+# the HOMEBREW_TAP_GITHUB_TOKEN secret is set; skipped otherwise. Linux users
+# install from the release tarball or with `go install`.
+homebrew_casks:
+  - name: meanwhile
+    repository:
+      owner: vg010623
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/vg010623/meanwhile
+    description: Learn AI fundamentals while Claude Code works
+    license: MIT
+    binaries: [meanwhile]
+    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    hooks:
+      post:
+        # The binary isn't code-signed yet; without this macOS refuses to run it.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/meanwhile"]
+          end
+    caveats: |
+      Connect meanwhile to Claude Code:
+        meanwhile setup
+      Then run `meanwhile` in a split pane or a second terminal tab.
+
+      Before uninstalling, remove the hooks:
+        meanwhile uninstall

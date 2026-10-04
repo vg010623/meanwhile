@@ -186,3 +186,16 @@ func TestFormatDuration(t *testing.T) {
 		}
 	}
 }
+
+func TestOldEventsPruned(t *testing.T) {
+	f := newFixture(t)
+	f.write(t, evt(0, events.WaitStarted, "s"), evt(5, events.WaitEnded, "s", reason(events.EndCompleted)))
+	f.in.Sync(at(10))
+	f.in.Sync(at(0).Add(eventRetention + time.Hour))
+	var evs, waits int
+	f.db.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&evs)
+	f.db.QueryRow(`SELECT COUNT(*) FROM waits`).Scan(&waits)
+	if evs != 0 || waits != 1 {
+		t.Errorf("events=%d waits=%d", evs, waits)
+	}
+}

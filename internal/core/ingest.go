@@ -36,7 +36,13 @@ CREATE INDEX waits_started ON waits (started_at);
 CREATE TABLE ingest_offsets (file TEXT PRIMARY KEY, byte_offset INTEGER NOT NULL);
 CREATE TABLE kv (namespace TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (namespace, key));
 `},
+	{Namespace: "core", Version: 2, SQL: `CREATE INDEX events_ts ON events (ts);`},
 }
+
+// eventRetention is how long raw events are kept. Waits (the useful summary)
+// are kept forever. This must stay longer than spoolRetention, because the
+// events table is what makes re-reading a spool file harmless.
+const eventRetention = 30 * 24 * time.Hour
 
 // StaleAfter is how long an open wait may go without any event before it is
 // closed automatically. Tool calls arrive as events, so a real run this
@@ -109,6 +115,9 @@ func (in *Ingestor) Sync(now time.Time) ([]Change, error) {
 		}
 	}
 	if err := saveOffsets(tx, res.Offsets); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`DELETE FROM events WHERE ts < ?`, ms(now.Add(-eventRetention))); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
