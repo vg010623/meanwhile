@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/vg010623/meanwhile/internal/core"
 	"github.com/vg010623/meanwhile/internal/store"
@@ -32,7 +33,7 @@ func cmdStats(args []string, e env) int {
 	fmt.Fprintf(e.stdout, "  Last 7 days       %s across %d waits\n", core.FormatDuration(s.Last7Total), s.Last7Count)
 	fmt.Fprintf(e.stdout, "  Today             %s across %d waits\n", core.FormatDuration(s.Today), s.TodayCount)
 	fmt.Fprintf(e.stdout, "  meanwhile showed  %d of %d waits\n", s.Shown, s.Count)
-	if s.Blocked > 0 {
+	if s.Blocked >= time.Second {
 		fmt.Fprintf(e.stdout, "  Claude waited on you for %s (not counted above)\n", core.FormatDuration(s.Blocked))
 	}
 	for _, section := range statsSections {

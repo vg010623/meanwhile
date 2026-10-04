@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**M0–M3 done.** Next: **M4: learn activity (`internal/activities/learn`) + wire `cmdUI` in `cmd/meanwhile/ui_cmd.go`.**
+**M0–M5 done.** Next: **M6: hardening, README, GoReleaser config and release workflow.**
 
 ## What the project is (30 seconds)
 
@@ -28,8 +28,8 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 - [x] **M1**: `internal/paths`, `internal/events` (hook → event mapping), `internal/spool` (daily JSONL), `internal/hook` (silent, 500 ms deadline, headless detection), `internal/install` (order-preserving settings.json patching, diff, backup, atomic write), CLI `setup` / `uninstall [--purge]` / `doctor` / `simulate` / `hook`. Real payloads recorded in `testdata/hook-payloads/` and `docs/claude-code-behaviour.md`. Verified end to end with a real `claude -p` run.
 - [x] **M2**: `internal/store` (SQLite WAL, namespaced migrations, quick_check, corrupt → restore `.bak` or start fresh, `BackupIfDue` with VACUUM INTO, KV), `internal/lock` (flock), `internal/core` (pure `Machine`, `Ingestor.Sync`, `CloseManual`, `OpenWaits`, `MarkShown`, `ComputeWaitStats`, `FormatDuration`), `meanwhile stats`, database check in `doctor`.
 - [x] **M3**: `internal/config` (TOML, defaults, `Ignored`), `internal/activity` (Activity/View interface, `DoneMsg`), `internal/shell` (Bubble Tea model: asleep/pending/awake × idle/working/blocked/finished, grace wake, needs-input screen hides the lesson, banners, `s` skip, `x` close or manual done, `enter` lesson on demand when asleep, other-session count, still-working prompt, compact mode, fsnotify plus 1 s tick sync). Not yet wired into `cmdUI`; the single-instance lock goes there.
-- [ ] **M4**: `internal/activities/learn`: picker, browse-all with the soft prerequisite note, cards, "I know this", resume with recap, learn stats.
-- [ ] **M5**: `internal/deeper`: headless Claude runner, consent and model choice, streaming, cancel, follow-ups, saved answers, error mapping.
+- [x] **M4**: `internal/activities/learn`: `progress.go` (learn_* tables, write-through progress), `graph.go` (ready / recommend by transitive unlocks, then order, then title / unmet / byTrack / cardIndex by ID with index fallback), `view.go` (screens: home Continue + recap, picker, browse with ✓◐○·, soft note, card with scroll, complete with unlocks), `text.go` (small Markdown renderer, 72-column cap), `Stats()`. `cmdUI` is wired: UI lock, config, DB, daily backup, activity Init, `shell.Run`.
+- [x] **M5**: `internal/deeper` (`Runner.Ask`, stream-json parser, error classification, first-byte and total timeouts, process-group cancel). `learn/deeper_view.go`: one-time consent screen with model choice (default / Sonnet / Haiku, stored in kv; config `[deeper] model` overrides), streaming, Esc cancel keeps the partial answer as `cancelled`, 2 stateless follow-ups, saved threads (`D` history, read-only), errors fall back to the cards. Verified against real Claude (see `docs/claude-code-behaviour.md`).
 - [ ] **M6**: hardening, README, GoReleaser config, release workflow.
 
 ## How the pieces fit (code map)
@@ -39,7 +39,8 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 - `internal/spool`: `Append`, `ReadNew(offsets)`, `Prune`. Partial trailing lines are left for the next read.
 - `internal/install`: `Specs` (hooks we register), `Command(bin)`, `Plan` / `PlanUninstall` / `Apply` / `Installed`, `Diff`. The marker is the trailing shell comment `# meanwhile hook`.
 - `cmd/meanwhile/app.go`: `allMigrations()` (core plus activities, so add activity migrations here), `openDB`, `newIngestor`. `stats_cmd.go` has `statsSections` for activities to add lines.
-- `cmd/meanwhile/ui_cmd.go`: `cmdUI` is a stub. M4 wires it up: `lock.TryAcquire(paths.UILock())`, `config.Load`, `openDB`, `db.BackupIfDue(24h)`, activity `Init`, `shell.Run(shell.Options{…})`.
+- `cmd/meanwhile/app.go`: `activities()` is the registry; to add an activity, append it here. Its migrations join automatically.
+- Learn keys: picker/browse `↑↓/jk` `enter` `i` (I know this) `b` (browse) `esc`; card `enter/→` next, `←` back, `i`, `d` (go deeper), `D` (saved answers), `j/k` scroll. Shell keys: `s` skip, `x` close / Claude's done, `q` quit, `enter` lesson on demand while asleep.
 - `internal/shell`: activity views get keys only when awake and not blocked. `Capturing()` views get every key except ctrl+c. Tests drive the model with real spool writes plus `m.syncCmd(true)()` and `tickMsg`, using `fakeActivity`.
 - `internal/core`: wait rules. A new prompt closes an open wait as `superseded` (the interrupt case). `idle_prompt` closes it with the end dated back to max(last event, now − 60 s). Needs-input time accumulates in `NeedsInput` and is excluded from `Working()`. No event for 30 min (`StaleAfter`) closes it as `stale`. All times are stored as Unix ms. Headless waits are kept but left out of stats.
 - `doctor` has an `extraDoctorChecks` hook so the store can add a database check without import cycles.
@@ -53,6 +54,10 @@ go build -o /tmp/mw ./cmd/meanwhile
 claude -p "..." --settings /tmp/s.json        # real hooks into the temp spool
 /tmp/mw simulate start|input|resume|end|idle|error|session-end
 ```
+
+## End-to-end smoke test (real TUI in a pty)
+
+tmux isn't installed; use `expect`. A session that passed: sleep → `simulate start` → "Claude is working" → grace wake → "Ready for you" → enter → card → `simulate input` → "needs your input" → `simulate resume` → `simulate end` → "Claude finished" → `x` → next start shows "Continue: …". Spawn with `sh -c "stty rows 30 cols 90; exec mw"` so Bubble Tea gets a size.
 
 ## Gotchas learned so far
 

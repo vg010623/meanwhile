@@ -22,6 +22,7 @@ Real payloads are in `testdata/hook-payloads/`, with the prompt text and paths s
 - **Hooks fire in headless `claude -p` runs**, including hooks passed through `--settings <file>`, merged with the user's own.
 - **No payload field says a session is headless.** `SessionStart.source` is `"startup"` either way. We detect it by walking the hook's parent processes for `claude … -p` / `--print` (`internal/hook/headless.go`), only on `UserPromptSubmit`. Verified: the recorded `wait_started` had `headless: true`.
 - **Hook cost:** the real binary takes about 4 ms per call (10 calls in 0.04 s on an M-series Mac).
+- **Go deeper command verified** with a real subscription login. `claude -p --safe-mode --tools "" --strict-mcp-config --no-session-persistence --output-format stream-json --verbose --include-partial-messages --max-turns 1 --system-prompt … --model haiku` exits 0 and answers. The `init` line reports `"tools":[]` and `"mcp_servers":[]`. Asked to list files, the model said it has no tools. **No hooks fired**, even with extra hooks injected through `--settings`, so `--safe-mode` disables hooks in `-p` mode. Text arrives as `stream_event` → `content_block_delta` → `text_delta`. Other line types (`thinking_tokens`, `rate_limit_event`, `status`) are ignored. The recording is in `testdata/fake-claude/success.jsonl`.
 - **`--bare` disables OAuth** (`claude --help`: "Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper"). Go deeper uses `--safe-mode` instead.
 
 ## From the docs, not yet verified by hand

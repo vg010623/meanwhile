@@ -3,13 +3,31 @@ package main
 import (
 	"fmt"
 
+	"github.com/vg010623/meanwhile/internal/activities/learn"
+	"github.com/vg010623/meanwhile/internal/activity"
+	"github.com/vg010623/meanwhile/internal/config"
+
 	"github.com/vg010623/meanwhile/internal/core"
 	"github.com/vg010623/meanwhile/internal/store"
 )
 
+// activities lists every activity. The first one is what the app runs.
+// Adding an activity means adding it here; the core doesn't change.
+func activities() []activity.Activity {
+	return []activity.Activity{learn.New()}
+}
+
 // allMigrations is the core schema plus every activity's tables.
 func allMigrations() []store.Migration {
-	return append([]store.Migration{}, core.Migrations...)
+	migs := append([]store.Migration{}, core.Migrations...)
+	for _, a := range activities() {
+		migs = append(migs, a.Migrations()...)
+	}
+	return migs
+}
+
+func activityContext(e env, db *store.DB, cfg config.Config) activity.Context {
+	return activity.Context{DB: db, Config: cfg, Paths: e.paths, Now: e.now}
 }
 
 // openDB opens the database, telling the user if it had to recover from a
@@ -34,6 +52,14 @@ func newIngestor(e env, db *store.DB) *core.Ingestor {
 }
 
 func init() {
+	statsSections = append(statsSections, func(e env, db *store.DB) ([]string, error) {
+		cfg, _ := config.Load(e.paths.ConfigFile())
+		l := learn.New()
+		if err := l.Init(activityContext(e, db, cfg)); err != nil {
+			return nil, err
+		}
+		return l.Stats()
+	})
 	extraDoctorChecks = append(extraDoctorChecks, func(e env) []doctorCheck {
 		db, err := openDB(e)
 		if err != nil {
