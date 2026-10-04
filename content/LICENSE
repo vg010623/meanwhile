@@ -1,0 +1,11 @@
+The curriculum in this folder (content/concepts/*.md) is licensed under the
+Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+You may share and adapt it for any purpose, including commercially, as long as
+you give appropriate credit, link to the license, and indicate if changes were
+made.
+
+Full license text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+The Go code in this folder (content.go, content_test.go) is covered by the MIT
+license in the repository root.
