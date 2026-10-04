@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**M0–M2 done.** Next: **M3: TUI shell (`internal/shell`, `internal/activity`) + `meanwhile` UI command.**
+**M0–M3 done.** Next: **M4: learn activity (`internal/activities/learn`) + wire `cmdUI` in `cmd/meanwhile/ui_cmd.go`.**
 
 ## What the project is (30 seconds)
 
@@ -27,7 +27,7 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 - [x] **M0**: repo, curriculum parser and validator (`internal/curriculum`), `meanwhile content check`, three placeholder concepts, CI workflow, licenses.
 - [x] **M1**: `internal/paths`, `internal/events` (hook → event mapping), `internal/spool` (daily JSONL), `internal/hook` (silent, 500 ms deadline, headless detection), `internal/install` (order-preserving settings.json patching, diff, backup, atomic write), CLI `setup` / `uninstall [--purge]` / `doctor` / `simulate` / `hook`. Real payloads recorded in `testdata/hook-payloads/` and `docs/claude-code-behaviour.md`. Verified end to end with a real `claude -p` run.
 - [x] **M2**: `internal/store` (SQLite WAL, namespaced migrations, quick_check, corrupt → restore `.bak` or start fresh, `BackupIfDue` with VACUUM INTO, KV), `internal/lock` (flock), `internal/core` (pure `Machine`, `Ingestor.Sync`, `CloseManual`, `OpenWaits`, `MarkShown`, `ComputeWaitStats`, `FormatDuration`), `meanwhile stats`, database check in `doctor`.
-- [ ] **M3**: `internal/shell` TUI: sleep/wake, grace delay, banners, skip, single-instance lock, compact and no-colour modes.
+- [x] **M3**: `internal/config` (TOML, defaults, `Ignored`), `internal/activity` (Activity/View interface, `DoneMsg`), `internal/shell` (Bubble Tea model: asleep/pending/awake × idle/working/blocked/finished, grace wake, needs-input screen hides the lesson, banners, `s` skip, `x` close or manual done, `enter` lesson on demand when asleep, other-session count, still-working prompt, compact mode, fsnotify plus 1 s tick sync). Not yet wired into `cmdUI`; the single-instance lock goes there.
 - [ ] **M4**: `internal/activities/learn`: picker, browse-all with the soft prerequisite note, cards, "I know this", resume with recap, learn stats.
 - [ ] **M5**: `internal/deeper`: headless Claude runner, consent and model choice, streaming, cancel, follow-ups, saved answers, error mapping.
 - [ ] **M6**: hardening, README, GoReleaser config, release workflow.
@@ -39,7 +39,8 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 - `internal/spool`: `Append`, `ReadNew(offsets)`, `Prune`. Partial trailing lines are left for the next read.
 - `internal/install`: `Specs` (hooks we register), `Command(bin)`, `Plan` / `PlanUninstall` / `Apply` / `Installed`, `Diff`. The marker is the trailing shell comment `# meanwhile hook`.
 - `cmd/meanwhile/app.go`: `allMigrations()` (core plus activities, so add activity migrations here), `openDB`, `newIngestor`. `stats_cmd.go` has `statsSections` for activities to add lines.
-- `cmd/meanwhile/ui_cmd.go`: `cmdUI` is a stub until M3.
+- `cmd/meanwhile/ui_cmd.go`: `cmdUI` is a stub. M4 wires it up: `lock.TryAcquire(paths.UILock())`, `config.Load`, `openDB`, `db.BackupIfDue(24h)`, activity `Init`, `shell.Run(shell.Options{…})`.
+- `internal/shell`: activity views get keys only when awake and not blocked. `Capturing()` views get every key except ctrl+c. Tests drive the model with real spool writes plus `m.syncCmd(true)()` and `tickMsg`, using `fakeActivity`.
 - `internal/core`: wait rules. A new prompt closes an open wait as `superseded` (the interrupt case). `idle_prompt` closes it with the end dated back to max(last event, now − 60 s). Needs-input time accumulates in `NeedsInput` and is excluded from `Working()`. No event for 30 min (`StaleAfter`) closes it as `stale`. All times are stored as Unix ms. Headless waits are kept but left out of stats.
 - `doctor` has an `extraDoctorChecks` hook so the store can add a database check without import cycles.
 
