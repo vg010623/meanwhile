@@ -1,0 +1,22 @@
+{
+  "session_id": "df20594e-8449-471b-8b5b-65bb849c55dc",
+  "transcript_path": "/Users/dev/.claude/projects/-Users-dev-project/SESSION.jsonl",
+  "cwd": "/Users/dev/project",
+  "prompt_id": "a4041251-b163-4ff6-a99d-ac9c2d371670",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo hello",
+    "description": "Echo hello"
+  },
+  "tool_response": {
+    "stdout": "hello",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+  },
+  "tool_use_id": "toolu_015vAFz7p2sdzFseWL4wccxY",
+  "duration_ms": 142
+}

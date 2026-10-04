@@ -3,14 +3,12 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
+	"time"
 
-	"github.com/vg010623/meanwhile/content"
-	"github.com/vg010623/meanwhile/internal/curriculum"
+	"github.com/vg010623/meanwhile/internal/paths"
 )
 
 // version is set at release time with -ldflags "-X main.version=...".
@@ -19,75 +17,81 @@ var version = "dev"
 const usage = `meanwhile: learn AI fundamentals while Claude Code works.
 
 Usage:
-  meanwhile content check [--dir DIR]   validate curriculum files
-  meanwhile version                     print the version
+  meanwhile                      start the app (run it in a split pane)
+  meanwhile setup                add meanwhile's hooks to Claude Code
+  meanwhile uninstall            remove them (--purge also deletes meanwhile's data)
+  meanwhile stats                wait time and learning progress
+  meanwhile doctor               check that everything is wired up
+  meanwhile content check        validate curriculum files (--dir DIR for drafts)
+  meanwhile simulate EVENT       write a fake Claude event (for development)
+  meanwhile version              print the version
 
-More commands (setup, uninstall, hook, stats, doctor) arrive in later milestones.
+meanwhile hook is what Claude Code runs; you never need to call it yourself.
 `
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+// env bundles everything a command touches, so tests can swap it out.
+type env struct {
+	stdin          io.Reader
+	stdout, stderr io.Writer
+	now            func() time.Time
+	paths          paths.Paths
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
-		return 2
+func main() {
+	// The hook path runs on every Claude event: keep it minimal and silent.
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		runHook()
+		os.Exit(0)
 	}
-	switch args[0] {
-	case "version", "--version":
-		fmt.Fprintln(stdout, version)
-		return 0
+	p, err := paths.Default()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "meanwhile:", err)
+		os.Exit(1)
+	}
+	e := env{stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr, now: time.Now, paths: p}
+	os.Exit(run(os.Args[1:], e))
+}
+
+func run(args []string, e env) int {
+	if len(args) == 0 {
+		return cmdUI(nil, e)
+	}
+	cmd, rest := args[0], args[1:]
+	switch cmd {
+	case "ui":
+		return cmdUI(rest, e)
+	case "setup":
+		return cmdSetup(rest, e)
+	case "uninstall":
+		return cmdUninstall(rest, e)
+	case "stats":
+		return cmdStats(rest, e)
+	case "doctor":
+		return cmdDoctor(rest, e)
+	case "simulate":
+		return cmdSimulate(rest, e)
 	case "content":
-		if len(args) < 2 || args[1] != "check" {
-			fmt.Fprint(stderr, usage)
+		if len(rest) < 1 || rest[0] != "check" {
+			fmt.Fprint(e.stderr, usage)
 			return 2
 		}
-		return contentCheck(args[2:], stdout, stderr)
+		return cmdContentCheck(rest[1:], e)
+	case "version", "--version":
+		fmt.Fprintln(e.stdout, version)
+		return 0
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, usage)
+		fmt.Fprint(e.stdout, usage)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
+		fmt.Fprintf(e.stderr, "unknown command %q\n\n%s", cmd, usage)
 		return 2
 	}
 }
 
-// contentCheck validates the embedded curriculum, or a folder on disk when
-// --dir is given (useful while writing new concepts).
-func contentCheck(args []string, stdout, stderr io.Writer) int {
-	fl := flag.NewFlagSet("content check", flag.ContinueOnError)
-	fl.SetOutput(stderr)
-	dir := fl.String("dir", "", "folder of concept .md files (default: the content built into meanwhile)")
-	if err := fl.Parse(args); err != nil {
-		return 2
-	}
-
-	var (
-		fsys fs.FS = content.FS
-		root       = content.Dir
-	)
-	if *dir != "" {
-		fsys, root = os.DirFS(*dir), "."
-	}
-
-	cur, issues := curriculum.Load(fsys, root)
-	errs, warns := 0, 0
-	for _, i := range issues {
-		fmt.Fprintln(stdout, i)
-		if i.Severity == curriculum.Error {
-			errs++
-		} else {
-			warns++
-		}
-	}
-	cards := 0
-	for _, c := range cur.Concepts {
-		cards += len(c.Cards)
-	}
-	fmt.Fprintf(stdout, "%d concepts, %d cards: %d errors, %d warnings\n", len(cur.Concepts), cards, errs, warns)
-	if errs > 0 {
-		return 1
-	}
-	return 0
+// confirm asks a yes/no question on stdin. Anything but y/yes is "no".
+func confirm(e env, question string) bool {
+	fmt.Fprintf(e.stdout, "%s [y/N] ", question)
+	var answer string
+	fmt.Fscanln(e.stdin, &answer)
+	return answer == "y" || answer == "Y" || answer == "yes"
 }

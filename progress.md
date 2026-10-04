@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**M0 done.** Next: **M1: hooks, spool, setup/uninstall/doctor.**
+**M0–M1 done.** Next: **M2: SQLite store, core ingestor and wait state machine, `meanwhile stats`.**
 
 ## What the project is (30 seconds)
 
@@ -25,14 +25,37 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 ## Milestones
 
 - [x] **M0**: repo, curriculum parser and validator (`internal/curriculum`), `meanwhile content check`, three placeholder concepts, CI workflow, licenses.
-- [ ] **M1**: `internal/events`, `internal/spool`, `internal/hook`, `internal/install` (settings.json patching), `setup` / `uninstall` / `doctor` / `simulate` commands; record real hook payloads in `docs/claude-code-behaviour.md`.
+- [x] **M1**: `internal/paths`, `internal/events` (hook → event mapping), `internal/spool` (daily JSONL), `internal/hook` (silent, 500 ms deadline, headless detection), `internal/install` (order-preserving settings.json patching, diff, backup, atomic write), CLI `setup` / `uninstall [--purge]` / `doctor` / `simulate` / `hook`. Real payloads recorded in `testdata/hook-payloads/` and `docs/claude-code-behaviour.md`. Verified end to end with a real `claude -p` run.
 - [ ] **M2**: `internal/store` (SQLite, migrations, integrity check, backup), `internal/core` (ingestor and wait state machine), `meanwhile stats` (wait part).
 - [ ] **M3**: `internal/shell` TUI: sleep/wake, grace delay, banners, skip, single-instance lock, compact and no-colour modes.
 - [ ] **M4**: `internal/activities/learn`: picker, browse-all with the soft prerequisite note, cards, "I know this", resume with recap, learn stats.
 - [ ] **M5**: `internal/deeper`: headless Claude runner, consent and model choice, streaming, cancel, follow-ups, saved answers, error mapping.
 - [ ] **M6**: hardening, README, GoReleaser config, release workflow.
 
+## How the pieces fit (code map)
+
+- `cmd/meanwhile/`: one file per command (`setup_cmd.go`, `doctor_cmd.go`…). `env` holds stdin/stdout/now/paths so commands are testable. `meanwhile hook` short-circuits in `main()` before anything else.
+- `internal/events`: `Event` (the spool line), `FromHook` (payload → event), end reasons (`completed|error|idle|superseded|session_ended|stale|manual`).
+- `internal/spool`: `Append`, `ReadNew(offsets)`, `Prune`. Partial trailing lines are left for the next read.
+- `internal/install`: `Specs` (hooks we register), `Command(bin)`, `Plan` / `PlanUninstall` / `Apply` / `Installed`, `Diff`. The marker is the trailing shell comment `# meanwhile hook`.
+- `cmd/meanwhile/ui_cmd.go`: `cmdUI` and `cmdStats` are stubs until M2 and M3.
+- `doctor` has an `extraDoctorChecks` hook so the store can add a database check without import cycles.
+
+## Testing without touching real data
+
+```sh
+export MEANWHILE_HOME=$(mktemp -d)            # all meanwhile data goes here
+go build -o /tmp/mw ./cmd/meanwhile
+/tmp/mw setup --settings /tmp/s.json --bin /tmp/mw --yes   # never the real ~/.claude/settings.json
+claude -p "..." --settings /tmp/s.json        # real hooks into the temp spool
+/tmp/mw simulate start|input|resume|end|idle|error|session-end
+```
+
 ## Gotchas learned so far
 
 - A card's fallback recap (its first sentence) is truncated to 120 characters. Only explicit `> Recap:` lines get the length warning.
 - `go:embed` can't reach parent folders, so `content/content.go` embeds `content/concepts/*.md` and exposes `content.FS` and `content.Dir`.
+- Hook payloads don't reveal headless runs. `internal/hook/headless.go` walks ancestor processes (`ps -o ppid=,args=`) on `UserPromptSubmit` only.
+- A quoted binary path splits the text "meanwhile hook", so the marker is a trailing `# meanwhile hook` comment instead.
+- Settings are re-emitted with two-space indent (Claude's own format). A file in that format round-trips byte for byte; others get reformatted once, with a backup and a diff shown.
+- macOS has no `timeout` command, and zsh globs fail when nothing matches; in scripts use `ls | while read`.
