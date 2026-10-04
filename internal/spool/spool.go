@@ -96,7 +96,9 @@ func ReadNew(dir string, offsets Offsets) (ReadResult, error) {
 		f.Close()
 		res.Offsets[name] = pos
 	}
-	sort.SliceStable(res.Events, func(i, j int) bool { return res.Events[i].ID < res.Events[j].ID })
+	// Order by time across files; equal timestamps keep their file order
+	// (the order they were written in), which the random ID suffix would not.
+	sort.SliceStable(res.Events, func(i, j int) bool { return res.Events[i].TS.Before(res.Events[j].TS) })
 	return res, nil
 }
 

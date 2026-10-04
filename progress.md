@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**M0–M1 done.** Next: **M2: SQLite store, core ingestor and wait state machine, `meanwhile stats`.**
+**M0–M2 done.** Next: **M3: TUI shell (`internal/shell`, `internal/activity`) + `meanwhile` UI command.**
 
 ## What the project is (30 seconds)
 
@@ -26,7 +26,7 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 
 - [x] **M0**: repo, curriculum parser and validator (`internal/curriculum`), `meanwhile content check`, three placeholder concepts, CI workflow, licenses.
 - [x] **M1**: `internal/paths`, `internal/events` (hook → event mapping), `internal/spool` (daily JSONL), `internal/hook` (silent, 500 ms deadline, headless detection), `internal/install` (order-preserving settings.json patching, diff, backup, atomic write), CLI `setup` / `uninstall [--purge]` / `doctor` / `simulate` / `hook`. Real payloads recorded in `testdata/hook-payloads/` and `docs/claude-code-behaviour.md`. Verified end to end with a real `claude -p` run.
-- [ ] **M2**: `internal/store` (SQLite, migrations, integrity check, backup), `internal/core` (ingestor and wait state machine), `meanwhile stats` (wait part).
+- [x] **M2**: `internal/store` (SQLite WAL, namespaced migrations, quick_check, corrupt → restore `.bak` or start fresh, `BackupIfDue` with VACUUM INTO, KV), `internal/lock` (flock), `internal/core` (pure `Machine`, `Ingestor.Sync`, `CloseManual`, `OpenWaits`, `MarkShown`, `ComputeWaitStats`, `FormatDuration`), `meanwhile stats`, database check in `doctor`.
 - [ ] **M3**: `internal/shell` TUI: sleep/wake, grace delay, banners, skip, single-instance lock, compact and no-colour modes.
 - [ ] **M4**: `internal/activities/learn`: picker, browse-all with the soft prerequisite note, cards, "I know this", resume with recap, learn stats.
 - [ ] **M5**: `internal/deeper`: headless Claude runner, consent and model choice, streaming, cancel, follow-ups, saved answers, error mapping.
@@ -38,7 +38,9 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 - `internal/events`: `Event` (the spool line), `FromHook` (payload → event), end reasons (`completed|error|idle|superseded|session_ended|stale|manual`).
 - `internal/spool`: `Append`, `ReadNew(offsets)`, `Prune`. Partial trailing lines are left for the next read.
 - `internal/install`: `Specs` (hooks we register), `Command(bin)`, `Plan` / `PlanUninstall` / `Apply` / `Installed`, `Diff`. The marker is the trailing shell comment `# meanwhile hook`.
-- `cmd/meanwhile/ui_cmd.go`: `cmdUI` and `cmdStats` are stubs until M2 and M3.
+- `cmd/meanwhile/app.go`: `allMigrations()` (core plus activities, so add activity migrations here), `openDB`, `newIngestor`. `stats_cmd.go` has `statsSections` for activities to add lines.
+- `cmd/meanwhile/ui_cmd.go`: `cmdUI` is a stub until M3.
+- `internal/core`: wait rules. A new prompt closes an open wait as `superseded` (the interrupt case). `idle_prompt` closes it with the end dated back to max(last event, now − 60 s). Needs-input time accumulates in `NeedsInput` and is excluded from `Working()`. No event for 30 min (`StaleAfter`) closes it as `stale`. All times are stored as Unix ms. Headless waits are kept but left out of stats.
 - `doctor` has an `extraDoctorChecks` hook so the store can add a database check without import cycles.
 
 ## Testing without touching real data
@@ -59,3 +61,5 @@ claude -p "..." --settings /tmp/s.json        # real hooks into the temp spool
 - A quoted binary path splits the text "meanwhile hook", so the marker is a trailing `# meanwhile hook` comment instead.
 - Settings are re-emitted with two-space indent (Claude's own format). A file in that format round-trips byte for byte; others get reformatted once, with a backup and a diff shown.
 - macOS has no `timeout` command, and zsh globs fail when nothing matches; in scripts use `ls | while read`.
+- Spool events are sorted by timestamp with a stable sort, so ties keep their write order. IDs have a random suffix, so sorting by ID breaks ties at random.
+- `store.Open` uses `SetMaxOpenConns(1)`. Don't hold a `rows` open while running another query on the same DB, or it deadlocks.

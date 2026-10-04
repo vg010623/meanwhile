@@ -141,3 +141,19 @@ func TestSimulate(t *testing.T) {
 		t.Errorf("bogus event: exit %d", code)
 	}
 }
+
+func TestStats(t *testing.T) {
+	te := newTestEnv(t, "")
+	for _, ev := range []string{"start", "end"} {
+		if code := run([]string{"simulate", ev}, te.env); code != 0 {
+			t.Fatal(te.errOut)
+		}
+	}
+	te.out.Reset()
+	if code := run([]string{"stats"}, te.env); code != 0 {
+		t.Fatalf("exit %d: %s", code, te.errOut)
+	}
+	if !strings.Contains(te.out.String(), "across 1 waits") {
+		t.Errorf("output:\n%s", te.out)
+	}
+}
