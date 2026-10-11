@@ -88,3 +88,6 @@ tmux isn't installed; use `expect`. A session that passed: sleep → `simulate s
 - Under NO_COLOR, `ESC[30;H` in output is cursor positioning, not colour. Don't mistake it for a NO_COLOR bug.
 - **Esc in Claude fires no hook at all, and no `idle_prompt` follows it** (verified on 2.1.296). Interrupted waits are closed by the next prompt (ended at their last event), by `x`, or as stale after 30 min. The UI nudges after `still_working_minutes` (default 2), both on the working header and on the blocked screen.
 - A wait is marked `shown` only in `checkGrace`, once it has passed `min_wait_seconds`, even when a card stayed open from the previous wait (`Model.shownID` stops double writes).
+- `x` (manual close) ends a wait at its `LastEventAt`. A `Stop`/`StopFailure` within `manualCorrectionWindow` (5 min) of the key press corrects it to Claude's real end (`Machine.RecentManual`, `Corrected` change, `waits.closed_at`, core migration v3). The shell ignores `Corrected` except to refresh `m.wait`.
+- The shell must refresh `m.wait` from `OpenWaits` on every sync: heartbeats change `LastEventAt` without producing a `Change`.
+- For `manualDoneGuard` (10 s) after a wait starts, `x` only closes the card; it doesn't end the run.

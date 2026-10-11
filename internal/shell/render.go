@@ -56,7 +56,7 @@ func (m *Model) View() string {
 
 func (m *Model) sleepView() string {
 	var top []string
-	top = append(top, bold.Render("meanwhile")+dim.Render(" · waiting for Claude"))
+	top = append(top, bold.Render("meanwhile")+dim.Render(" · waiting for Claude")+m.othersText())
 	if m.phase == pending && m.status == working {
 		top = append(top, dim.Render("● Claude is working…"))
 	} else if m.status == finished && m.wait.ID != "" && m.wait.ID != m.skipped {
@@ -128,9 +128,7 @@ func (m *Model) header() string {
 	default:
 		line = dim.Render("Lesson time · no Claude run in progress")
 	}
-	if m.others > 0 {
-		line += dim.Render(fmt.Sprintf(" · +%d other session working", m.others))
-	}
+	line += m.othersText()
 	lines := []string{line}
 	if m.status == working && !m.wait.LastEventAt.IsZero() {
 		quiet := now.Sub(m.wait.LastEventAt)
@@ -243,4 +241,24 @@ func truncate(s string, width int) string {
 
 func (m *Model) stillWorkingAfter() time.Duration {
 	return time.Duration(m.o.Config.StillWorkingMinutes) * time.Minute
+}
+
+// othersText describes other Claude sessions, putting the ones waiting for
+// the user first: telling them "working" would be wrong.
+func (m *Model) othersText() string {
+	var out string
+	if m.othersBlocked > 0 {
+		out += warnText.Render(fmt.Sprintf(" · %d other %s needs you", m.othersBlocked, plural(m.othersBlocked, "session")))
+	}
+	if m.othersWorking > 0 {
+		out += dim.Render(fmt.Sprintf(" · +%d other %s working", m.othersWorking, plural(m.othersWorking, "session")))
+	}
+	return out
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }

@@ -35,6 +35,7 @@ type Wait struct {
 	LastEventAt  time.Time
 	Headless     bool
 	Shown        bool
+	ClosedAt     time.Time // when the user pressed "Claude's done"; zero otherwise
 }
 
 // maxWait caps a single wait so clock jumps or missed end events can't
@@ -64,6 +65,7 @@ const (
 	Blocked                     // Claude needs the user
 	Unblocked                   // Claude is working again
 	Closed                      // the wait ended (see Wait.EndReason)
+	Corrected                   // an already-closed wait's end was fixed up (see Machine.RecentManual)
 )
 
 // Change is reported to whoever is watching (the UI).
@@ -81,9 +83,19 @@ const idleDelay = 60 * time.Second
 // database, applies new events, and saves the result.
 type Machine struct {
 	Open map[string]*Wait // by session ID
+	// RecentManual holds, per session, a wait the user closed with "Claude's
+	// done" in the last few minutes. If Claude's Stop arrives after all, the
+	// user was wrong (Claude was still running) and the wait is corrected.
+	RecentManual map[string]*Wait
 }
 
-func NewMachine() *Machine { return &Machine{Open: map[string]*Wait{}} }
+// manualCorrectionWindow is how long after a manual close a Stop still
+// corrects it.
+const manualCorrectionWindow = 5 * time.Minute
+
+func NewMachine() *Machine {
+	return &Machine{Open: map[string]*Wait{}, RecentManual: map[string]*Wait{}}
+}
 
 // Apply updates the open waits for one event and returns what changed.
 func (m *Machine) Apply(e events.Event) []Change {
@@ -98,6 +110,7 @@ func (m *Machine) Apply(e events.Event) []Change {
 
 	switch e.Kind {
 	case events.WaitStarted:
+		delete(m.RecentManual, e.SessionID) // a newer wait: too late to correct the old one
 		var changes []Change
 		if w != nil {
 			// The user sent a new prompt while the old wait was still open:
@@ -130,7 +143,7 @@ func (m *Machine) Apply(e events.Event) []Change {
 
 	case events.WaitEnded:
 		if w == nil {
-			return nil
+			return m.correctManual(e)
 		}
 		end := e.TS
 		if e.EndReason == events.EndIdle {
@@ -163,12 +176,38 @@ func (m *Machine) CloseStale(now time.Time, maxQuiet time.Duration) []Change {
 
 // CloseManual closes a session's open wait because the user said Claude is
 // done (the `x` key), for when an interrupt left it open.
+//
+// The end is dated to the last thing Claude did, not to the key press: after
+// an Esc interrupt nothing happens until the user notices, and that idle
+// time isn't Claude working. If Claude was in fact still running, its Stop
+// will arrive soon and correctManual fixes the record.
 func (m *Machine) CloseManual(sessionID string, now time.Time) []Change {
 	w := m.Open[sessionID]
 	if w == nil {
 		return nil
 	}
-	return []Change{m.close(w, now, events.EndManual, "")}
+	w.ClosedAt = now
+	c := m.close(w, w.LastEventAt, events.EndManual, "")
+	closed := c.Wait
+	m.RecentManual[sessionID] = &closed
+	return []Change{c}
+}
+
+// correctManual handles a Stop (or StopFailure) for a session with no open
+// wait: if the user closed its wait by hand moments ago, Claude was actually
+// still working, so the wait gets Claude's real end time and reason.
+func (m *Machine) correctManual(e events.Event) []Change {
+	r := m.RecentManual[e.SessionID]
+	if r == nil || (e.EndReason != events.EndCompleted && e.EndReason != events.EndError) {
+		return nil
+	}
+	delete(m.RecentManual, e.SessionID)
+	if e.TS.Sub(r.ClosedAt) > manualCorrectionWindow || e.TS.Before(r.EndedAt) {
+		return nil
+	}
+	r.EndedAt, r.EndReason, r.ErrorType = e.TS, e.EndReason, e.ErrorType
+	r.LastEventAt = e.TS
+	return []Change{{Corrected, *r}}
 }
 
 func (m *Machine) close(w *Wait, end time.Time, reason, errType string) Change {

@@ -51,6 +51,10 @@ const (
 	finished               // the followed wait ended
 )
 
+// manualDoneGuard: for this long after a wait starts, x only closes the card
+// instead of telling meanwhile that Claude is done.
+const manualDoneGuard = 10 * time.Second
+
 // liveWindow: on startup, an open wait counts as live only if Claude did
 // something this recently. Older ones are probably interrupted runs.
 const liveWindow = 10 * time.Minute
@@ -65,7 +69,8 @@ type Model struct {
 	view          activity.View
 	skipped       string // ID of a wait the user skipped or closed
 	shownID       string // ID of the last wait recorded as shown
-	others        int    // other sessions with Claude working
+	othersWorking int    // other sessions with Claude working
+	othersBlocked int    // other sessions where Claude is waiting for the user
 	today         core.WaitStats
 	started       bool
 	errMsg        string
@@ -240,10 +245,19 @@ func (m *Model) applySync(msg syncMsg) tea.Cmd {
 			}
 		}
 	}
-	m.others = 0
+	m.othersWorking, m.othersBlocked = 0, 0
 	for _, w := range msg.open {
-		if m.relevant(w) && w.ID != m.wait.ID {
-			m.others++
+		switch {
+		case w.ID == m.wait.ID:
+			// Heartbeats (tool calls) move LastEventAt without producing a
+			// Change, so refresh the followed wait from the database. The
+			// "still working?" nudge measures from LastEventAt.
+			m.wait = w
+		case !m.relevant(w):
+		case w.State == core.NeedsInput:
+			m.othersBlocked++
+		default:
+			m.othersWorking++
 		}
 	}
 	cmds = append(cmds, m.checkGrace())
@@ -281,7 +295,7 @@ func (m *Model) applyChange(c core.Change) tea.Cmd {
 		return nil
 	}
 	if w.ID != m.wait.ID {
-		return nil // another session; only counted in m.others
+		return nil // another session; only counted in othersWorking/othersBlocked
 	}
 	m.wait = w
 	switch c.Kind {
@@ -383,6 +397,13 @@ func (m *Model) handleKey(k tea.KeyMsg) tea.Cmd {
 			m.closeView()
 			return nil
 		case working, blocked:
+			if m.o.Now().Sub(m.wait.StartedAt) < manualDoneGuard {
+				// A new run just started under an open card: the user was
+				// most likely dismissing the last "Claude finished" banner.
+				// Close the card, but don't end a run that just began.
+				m.closeView()
+				return nil
+			}
 			// An interrupt fires no hook, so the user can tell us directly.
 			if m.wait.ID != "" && m.wait.EndedAt.IsZero() {
 				changes, err := m.o.Ingestor.CloseManual(m.wait.SessionID, m.o.Now())

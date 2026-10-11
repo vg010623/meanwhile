@@ -383,3 +383,54 @@ func TestCompactAndErrorBanner(t *testing.T) {
 		t.Errorf("compact:\n%s", s)
 	}
 }
+
+func TestNudgeMeasuresFromLastEvent(t *testing.T) {
+	// Bug seen on 2.1.296: "Claude is working · 2m 13s" and "No sign of
+	// Claude for 2m 13s" together, though tool events kept arriving.
+	h := newHarness(t)
+	h.event(0, events.WaitStarted)
+	h.tick(5)
+	for sec := 30; sec <= 300; sec += 30 {
+		h.event(sec, events.InputResolved) // a tool call every 30 s
+		h.tick(sec + 1)
+		if strings.Contains(h.screen(), "Still working?") {
+			t.Fatalf("nudge at %ds despite regular tool events:\n%s", sec, h.screen())
+		}
+	}
+	h.tick(300 + 125) // then silence for over 2 minutes
+	if !strings.Contains(h.screen(), "No sign of Claude for 2m 05s") {
+		t.Errorf("no nudge after silence:\n%s", h.screen())
+	}
+}
+
+func TestOtherSessionBlockedIsNotWorking(t *testing.T) {
+	h := newHarness(t)
+	h.event(0, events.WaitStarted, func(e *events.Event) { e.SessionID = "a" })
+	h.event(1, events.NeedsInput, func(e *events.Event) { e.SessionID = "a"; e.InputKind = events.InputQuestion })
+	h.event(2, events.WaitStarted, func(e *events.Event) { e.SessionID = "b" })
+	h.tick(7)
+	s := h.screen()
+	if !strings.Contains(s, "1 other session needs you") || strings.Contains(s, "other session working") {
+		t.Errorf("header:\n%s", s)
+	}
+}
+
+func TestXRightAfterNewWaitOnlyClosesCard(t *testing.T) {
+	// Real case (2.1.296): the user pressed x to dismiss "Claude finished"
+	// just as a new prompt started, which ended the new run by mistake.
+	h := newHarness(t)
+	h.event(0, events.WaitStarted)
+	h.tick(5)
+	h.event(20, events.WaitEnded, ended(events.EndCompleted))
+	h.event(30, events.WaitStarted) // card still open: flips to "working"
+	h.now = t0.Add(33 * time.Second)
+	h.key("x")
+	if h.m.view != nil {
+		t.Error("card not closed")
+	}
+	var open int
+	h.db.QueryRow(`SELECT COUNT(*) FROM waits WHERE ended_at IS NULL`).Scan(&open)
+	if open != 1 {
+		t.Errorf("the new run was ended (open waits: %d)", open)
+	}
+}

@@ -152,12 +152,15 @@ func TestManualCloseAndShown(t *testing.T) {
 	if err := MarkShown(f.db, changes[0].Wait.ID, "learn"); err != nil {
 		t.Fatal(err)
 	}
-	closed, err := f.in.CloseManual("s", at(30))
+	f.write(t, evt(20, events.InputResolved, "s")) // last sign of Claude
+	f.in.Sync(at(21))
+	closed, err := f.in.CloseManual("s", at(150))
 	if err != nil || len(closed) != 1 || closed[0].Wait.EndReason != events.EndManual {
 		t.Fatalf("got %+v %v", closed, err)
 	}
 	s, _ := ComputeWaitStats(f.db, at(60))
-	if s.Shown != 1 || s.Total != 30*time.Second {
+	// Ends at the last event (20 s), not at the key press (150 s).
+	if s.Shown != 1 || s.Total != 20*time.Second {
 		t.Errorf("stats %+v", s)
 	}
 }
@@ -197,5 +200,25 @@ func TestOldEventsPruned(t *testing.T) {
 	f.db.QueryRow(`SELECT COUNT(*) FROM waits`).Scan(&waits)
 	if evs != 0 || waits != 1 {
 		t.Errorf("events=%d waits=%d", evs, waits)
+	}
+}
+
+func TestStopAfterManualCloseCorrectsIt(t *testing.T) {
+	// Real case (2.1.296): x pressed while Claude was still running; its
+	// Stop arrived 10 s later. The wait must end at the Stop, as completed.
+	f := newFixture(t)
+	f.write(t, evt(0, events.WaitStarted, "s"), evt(3, events.InputResolved, "s"))
+	f.in.Sync(at(4))
+	f.in.CloseManual("s", at(5))
+	f.write(t, evt(9, events.InputResolved, "s"), evt(15, events.WaitEnded, "s", reason(events.EndCompleted)))
+	changes, err := f.in.Sync(at(16))
+	if err != nil || len(changes) != 1 || changes[0].Kind != Corrected {
+		t.Fatalf("changes %+v %v", changes, err)
+	}
+	s, _ := ComputeWaitStats(f.db, at(20))
+	var reason string
+	f.db.QueryRow(`SELECT end_reason FROM waits`).Scan(&reason)
+	if reason != events.EndCompleted || s.Total != 15*time.Second {
+		t.Errorf("reason=%q total=%s", reason, s.Total)
 	}
 }

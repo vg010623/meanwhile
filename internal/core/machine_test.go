@@ -233,3 +233,64 @@ func TestHeadlessFlagCarried(t *testing.T) {
 		t.Error("headless lost")
 	}
 }
+
+func TestManualCloseEndsAtLastEvent(t *testing.T) {
+	// Real case (2.1.296): started 0 s, last event 5 s, x pressed at 152 s.
+	m := NewMachine()
+	run(m, evt(0, events.WaitStarted, "s"), evt(5, events.InputResolved, "s"))
+	c := m.CloseManual("s", at(152))
+	if len(c) != 1 || c[0].Wait.EndedAt != at(5) || c[0].Wait.Working(at(999)) != 5*time.Second || c[0].Wait.ClosedAt != at(152) {
+		t.Fatalf("got %+v", c)
+	}
+}
+
+func TestManualCloseWhileBlocked(t *testing.T) {
+	// Permission dialog dismissed with Esc: no hook. Needs-input time counts
+	// only up to the last event (the Notification 6 s after the request).
+	m := NewMachine()
+	run(m,
+		evt(0, events.WaitStarted, "s"),
+		evt(10, events.NeedsInput, "s"),
+		evt(16, events.NeedsInput, "s"),
+	)
+	w := m.CloseManual("s", at(200))[0].Wait
+	if w.EndedAt != at(16) || w.NeedsInput != 6*time.Second || w.Working(at(999)) != 10*time.Second {
+		t.Errorf("ended=%s needs=%s working=%s", w.EndedAt.Sub(t0), w.NeedsInput, w.Working(at(999)))
+	}
+}
+
+func TestStopCorrectsRecentManualClose(t *testing.T) {
+	m := NewMachine()
+	run(m, evt(0, events.WaitStarted, "s"), evt(2, events.InputResolved, "s"))
+	m.CloseManual("s", at(3))
+	_, changes := run(m, evt(13, events.WaitEnded, "s", reason(events.EndCompleted)))
+	if len(changes) != 1 || changes[0].Kind != Corrected || changes[0].Wait.EndedAt != at(13) || changes[0].Wait.EndReason != events.EndCompleted {
+		t.Fatalf("got %+v", changes)
+	}
+	// Only once.
+	if _, again := run(m, evt(20, events.WaitEnded, "s", reason(events.EndCompleted))); len(again) != 0 {
+		t.Error("corrected twice")
+	}
+}
+
+func TestStopDoesNotCorrectOldOrSupersededManualClose(t *testing.T) {
+	m := NewMachine()
+	run(m, evt(0, events.WaitStarted, "s"))
+	m.CloseManual("s", at(1))
+	if _, c := run(m, evt(1+6*60, events.WaitEnded, "s", reason(events.EndCompleted))); len(c) != 0 {
+		t.Error("corrected after the window")
+	}
+	run(m, evt(400, events.WaitStarted, "s"))
+	m.CloseManual("s", at(401))
+	run(m, evt(402, events.WaitStarted, "s"), evt(403, events.WaitEnded, "s", reason(events.EndCompleted)))
+	// The Stop belongs to the new wait, which closes normally.
+	if len(m.RecentManual) != 0 {
+		t.Error("stale manual entry kept")
+	}
+	// The idle notification never corrects anything.
+	run(m, evt(500, events.WaitStarted, "t"))
+	m.CloseManual("t", at(501))
+	if _, c := run(m, evt(560, events.WaitEnded, "t", reason(events.EndIdle))); len(c) != 0 {
+		t.Error("idle_prompt corrected a manual close")
+	}
+}

@@ -42,6 +42,12 @@ Bugs found in that session and fixed:
 - The "needs your input" screen had no way out after a permission dialog was dismissed with Esc. It now shows the quiet-time hint, and `x` closes it.
 - "meanwhile showed N of M waits" counted quick waits as shown when a card was still open from the previous wait. A wait now counts as shown only after it passes the grace delay.
 
+Second round of bugs from the same testing, fixed:
+- `x` ("Claude's done") dated the end to the key press, so idle time after Esc counted as work (151.7 s recorded instead of about 5 s). It now ends at the wait's last event. If Claude's `Stop` arrives within 5 minutes of a manual close, Claude was in fact still running: the wait is corrected to end at the `Stop`, as `completed`.
+- The "Still working?" nudge measured from the wait's *start*, because tool-call heartbeats never refreshed the UI's copy of the wait. It fired on every run longer than 2 minutes. The shell now refreshes the followed wait from the database on every sync.
+- Another session blocked on the user was shown as "+1 other session working". It now says "1 other session needs you".
+- Pressing `x` to dismiss "Claude finished" just as a new prompt started ended the new run. For the first 10 s of a wait, `x` now only closes the card.
+
 ## Not yet verified
 
 - `StopFailure` payload: documented as carrying `error_type`. We read `error_type` and fall back to `error`.

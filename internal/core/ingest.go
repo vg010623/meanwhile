@@ -37,6 +37,7 @@ CREATE TABLE ingest_offsets (file TEXT PRIMARY KEY, byte_offset INTEGER NOT NULL
 CREATE TABLE kv (namespace TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (namespace, key));
 `},
 	{Namespace: "core", Version: 2, SQL: `CREATE INDEX events_ts ON events (ts);`},
+	{Namespace: "core", Version: 3, SQL: `ALTER TABLE waits ADD COLUMN closed_at INTEGER;`},
 }
 
 // eventRetention is how long raw events are kept. Waits (the useful summary)
@@ -84,7 +85,7 @@ func (in *Ingestor) Sync(now time.Time) ([]Change, error) {
 	}
 	defer tx.Rollback() // no-op after Commit
 
-	m, err := loadOpen(tx)
+	m, err := loadOpen(tx, now)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +143,7 @@ func (in *Ingestor) CloseManual(sessionID string, now time.Time) ([]Change, erro
 		return nil, err
 	}
 	defer tx.Rollback()
-	m, err := loadOpen(tx)
+	m, err := loadOpen(tx, now)
 	if err != nil {
 		return nil, err
 	}
@@ -217,17 +218,18 @@ func upsertSession(tx execer, e events.Event) error {
 }
 
 const waitColumns = `id, session_id, cwd, worktree_root, started_at, ended_at, end_reason, error_type,
-	state, input_since, input_kind, needs_input_ms, last_event_at, headless, shown`
+	state, input_since, input_kind, needs_input_ms, last_event_at, headless, shown, closed_at`
 
 func saveWait(tx execer, w Wait) error {
-	_, err := tx.Exec(`INSERT INTO waits (`+waitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := tx.Exec(`INSERT INTO waits (`+waitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			ended_at = excluded.ended_at, end_reason = excluded.end_reason, error_type = excluded.error_type,
 			state = excluded.state, input_since = excluded.input_since, input_kind = excluded.input_kind,
-			needs_input_ms = excluded.needs_input_ms, last_event_at = excluded.last_event_at`,
+			needs_input_ms = excluded.needs_input_ms, last_event_at = excluded.last_event_at,
+			closed_at = excluded.closed_at`,
 		w.ID, w.SessionID, w.CWD, w.WorktreeRoot, ms(w.StartedAt), nullMS(w.EndedAt), w.EndReason, w.ErrorType,
 		string(w.State), nullMS(w.InputSince), w.InputKind, w.NeedsInput.Milliseconds(), ms(w.LastEventAt),
-		boolInt(w.Headless), boolInt(w.Shown))
+		boolInt(w.Headless), boolInt(w.Shown), nullMS(w.ClosedAt))
 	return err
 }
 
@@ -237,14 +239,14 @@ func scanWait(r scanner) (Wait, error) {
 	var (
 		w                            Wait
 		started, lastEvent, needMS   int64
-		ended, inputSince            sql.NullInt64
+		ended, inputSince, closedAt  sql.NullInt64
 		endReason, errType, inputKnd sql.NullString
 		cwd, root                    sql.NullString
 		state                        string
 		headless, shown              int
 	)
 	err := r.Scan(&w.ID, &w.SessionID, &cwd, &root, &started, &ended, &endReason, &errType,
-		&state, &inputSince, &inputKnd, &needMS, &lastEvent, &headless, &shown)
+		&state, &inputSince, &inputKnd, &needMS, &lastEvent, &headless, &shown, &closedAt)
 	if err != nil {
 		return w, err
 	}
@@ -256,6 +258,9 @@ func scanWait(r scanner) (Wait, error) {
 	if inputSince.Valid {
 		w.InputSince = fromMS(inputSince.Int64)
 	}
+	if closedAt.Valid {
+		w.ClosedAt = fromMS(closedAt.Int64)
+	}
 	w.EndReason, w.ErrorType, w.InputKind = endReason.String, errType.String, inputKnd.String
 	w.State = State(state)
 	w.NeedsInput = time.Duration(needMS) * time.Millisecond
@@ -263,7 +268,10 @@ func scanWait(r scanner) (Wait, error) {
 	return w, nil
 }
 
-func loadOpen(q querier) (*Machine, error) {
+// loadOpen rebuilds the machine from the database: every open wait, plus
+// waits closed by hand recently enough that a late Stop may still correct
+// them (and with no newer wait in their session).
+func loadOpen(q querier, now time.Time) (*Machine, error) {
 	rows, err := q.Query(`SELECT ` + waitColumns + ` FROM waits WHERE ended_at IS NULL`)
 	if err != nil {
 		return nil, err
@@ -280,7 +288,29 @@ func loadOpen(q querier) (*Machine, error) {
 		}
 		m.Open[w.SessionID] = &w
 	}
-	return m, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	recent, err := q.Query(`SELECT `+waitColumns+` FROM waits w
+		WHERE end_reason = ? AND closed_at >= ?
+		AND NOT EXISTS (SELECT 1 FROM waits n WHERE n.session_id = w.session_id AND n.started_at > w.started_at)`,
+		events.EndManual, ms(now.Add(-manualCorrectionWindow)))
+	if err != nil {
+		return nil, err
+	}
+	defer recent.Close()
+	for recent.Next() {
+		w, err := scanWait(recent)
+		if err != nil {
+			return nil, err
+		}
+		if _, open := m.Open[w.SessionID]; !open {
+			m.RecentManual[w.SessionID] = &w
+		}
+	}
+	return m, recent.Err()
 }
 
 func loadOffsets(db *store.DB) (spool.Offsets, error) {
