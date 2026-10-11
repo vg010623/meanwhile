@@ -25,7 +25,9 @@ type Config struct {
 	// this long, so quick answers never flash a card.
 	MinWaitSeconds int `toml:"min_wait_seconds"`
 	// StillWorkingMinutes: with no sign of life for this long, ask "Still
-	// working?" (an interrupt fires no hook, so we can't know for sure).
+	// working?". Esc in Claude fires no hook at all, so this nudge is how an
+	// interrupted run gets noticed. A long silent tool call (a slow test run)
+	// can trigger it too; pressing nothing just leaves it showing.
 	StillWorkingMinutes int    `toml:"still_working_minutes"`
 	Bell                string `toml:"bell"`
 	// ContentDir loads concept files from disk instead of the built-in ones.
@@ -43,7 +45,7 @@ type Deeper struct {
 
 // Default returns the built-in settings.
 func Default() Config {
-	return Config{MinWaitSeconds: 4, StillWorkingMinutes: 10, Bell: BellNeedsInput}
+	return Config{MinWaitSeconds: 4, StillWorkingMinutes: 2, Bell: BellNeedsInput}
 }
 
 // Load reads path over the defaults. A missing file is not an error. An

@@ -25,12 +25,23 @@ Real payloads are in `testdata/hook-payloads/`, with the prompt text and paths s
 - **Go deeper command verified** with a real subscription login. `claude -p --safe-mode --tools "" --strict-mcp-config --no-session-persistence --output-format stream-json --verbose --include-partial-messages --max-turns 1 --system-prompt … --model haiku` exits 0 and answers. The `init` line reports `"tools":[]` and `"mcp_servers":[]`. Asked to list files, the model said it has no tools. **No hooks fired**, even with extra hooks injected through `--settings`, so `--safe-mode` disables hooks in `-p` mode. Text arrives as `stream_event` → `content_block_delta` → `text_delta`. Other line types (`thinking_tokens`, `rate_limit_event`, `status`) are ignored. The recording is in `testdata/fake-claude/success.jsonl`.
 - **`--bare` disables OAuth** (`claude --help`: "Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper"). Go deeper uses `--safe-mode` instead.
 
-## From the docs, not yet verified by hand
+## Verified interactively on Claude Code 2.1.296 (11 Oct 2026)
 
-These need an interactive session, which we can't script. Check them manually with `meanwhile simulate` turned off and a real `claude` session.
+Checked in a real interactive session with meanwhile running in a second terminal, by reading the spool and `meanwhile stats` after each step.
 
-- `Stop` does **not** fire when the user presses Esc or Ctrl+C (documented). Fallbacks: the next prompt, `Notification idle_prompt` about 60 s later, `SessionEnd`, and the `x` key.
-- Whether `idle_prompt` fires after an interrupt. The docs say it fires about 60 s after Claude finished and the user is idle.
-- `PermissionRequest` fires before a permission dialog, but not in auto or bypass modes.
+- **Esc fires no hook.** No `Stop`, nothing at all.
+- **`idle_prompt` does not fire after an Esc interrupt** (watched for 4 min 23 s). After a *normal* `Stop`, `Notification idle_prompt` reliably fires about 60 s later. By then the wait is already closed, so the core correctly ignores it. An interrupted wait therefore closes only on the next prompt (`superseded`), on `x`, or after 30 min (`stale`). The UI asks "Still working?" after `still_working_minutes` (default 2).
+- **Esc on a permission dialog fires no hook** (no `PostToolUseFailure`, nothing). The blocked screen shows a "Dealt with it? Press x." hint after `still_working_minutes`.
+- **`PermissionRequest`** fires about 2–3 s after the tool call in default mode. Each permission dialog also sends `Notification` (`permission_prompt`) about 6 s later; it's a duplicate, ignored by the machine. Approving leads to `PostToolUse`; a command that then fails leads to `PostToolUseFailure`. Neither fires in auto mode.
+- **`AskUserQuestion`:** `PreToolUse` (`tool_name: AskUserQuestion`) gives `needs_input` with kind `question`. A `PermissionRequest` fires at the same instant (ignored as a duplicate, so the kind stays `question`), then a `Notification` about 6 s later. Answering leads to `PostToolUse`.
+- **Short replies** (under 4 s) never showed the UI. Long ones showed after the 4 s grace delay and ended with "Claude finished".
+
+Bugs found in that session and fixed:
+- A superseded (interrupted) wait used to end at the *next prompt's* time, so the idle minutes after Esc counted as Claude working. It now ends at the wait's last event.
+- The "Still working?" nudge appeared only after 10 min. The default is now 2 min.
+- The "needs your input" screen had no way out after a permission dialog was dismissed with Esc. It now shows the quiet-time hint, and `x` closes it.
+- "meanwhile showed N of M waits" counted quick waits as shown when a card was still open from the previous wait. A wait now counts as shown only after it passes the grace delay.
+
+## Not yet verified
+
 - `StopFailure` payload: documented as carrying `error_type`. We read `error_type` and fall back to `error`.
-- `AskUserQuestion` arrives as `PreToolUse` with `tool_name: "AskUserQuestion"`. When the user answers, `PostToolUse` fires.

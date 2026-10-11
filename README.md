@@ -81,7 +81,7 @@ Everything works without a config file. To change defaults, create `~/.config/me
 
 ```toml
 min_wait_seconds = 4          # how long Claude must work before a lesson appears
-still_working_minutes = 10    # ask "still working?" after this long with no sign of Claude
+still_working_minutes = 2     # ask "still working?" after this long with no sign of Claude
 bell = "needs_input"          # ring the terminal bell: "needs_input", "always" or "never"
 ignore_dirs = ["~/ci"]        # never wake for Claude runs started in these folders
 content_dir = "~/my-lessons"  # load concept files from here (for writing lessons)

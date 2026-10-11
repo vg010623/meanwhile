@@ -8,7 +8,7 @@ import (
 
 func TestLoadMissingFileGivesDefaults(t *testing.T) {
 	c, err := Load(filepath.Join(t.TempDir(), "none.toml"))
-	if err != nil || c.MinWaitSeconds != 4 || c.Bell != BellNeedsInput || c.StillWorkingMinutes != 10 {
+	if err != nil || c.MinWaitSeconds != 4 || c.Bell != BellNeedsInput || c.StillWorkingMinutes != 2 {
 		t.Errorf("got %+v %v", c, err)
 	}
 }

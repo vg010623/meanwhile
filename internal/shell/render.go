@@ -98,6 +98,11 @@ func (m *Model) blockedView() string {
 		"",
 		"Switch to Claude. Your card will be here when you get back.",
 	}
+	// Rejecting a permission dialog with Esc fires no hook, so this screen
+	// could otherwise stay up forever.
+	if quiet := m.o.Now().Sub(m.wait.LastEventAt); !m.wait.LastEventAt.IsZero() && quiet > m.stillWorkingAfter() {
+		lines = append(lines, "", warnText.Render(fmt.Sprintf("No sign of Claude for %s. Dealt with it? Press x.", core.FormatDuration(quiet))))
+	}
 	body := lipgloss.Place(m.width, m.height-1, lipgloss.Center, lipgloss.Center,
 		lipgloss.NewStyle().Width(min(m.width-4, 60)).Align(lipgloss.Center).Render(strings.Join(lines, "\n")))
 	return body + "\n" + dim.Render(m.footerKeys(""))
@@ -129,7 +134,7 @@ func (m *Model) header() string {
 	lines := []string{line}
 	if m.status == working && !m.wait.LastEventAt.IsZero() {
 		quiet := now.Sub(m.wait.LastEventAt)
-		if quiet > time.Duration(m.o.Config.StillWorkingMinutes)*time.Minute {
+		if quiet > m.stillWorkingAfter() {
 			lines = append(lines, warnText.Render(fmt.Sprintf("No sign of Claude for %s. Still working? Press x if it's done.", core.FormatDuration(quiet))))
 		}
 	}
@@ -234,4 +239,8 @@ func truncate(s string, width int) string {
 		r = r[:len(r)-1]
 	}
 	return string(r) + "…"
+}
+
+func (m *Model) stillWorkingAfter() time.Duration {
+	return time.Duration(m.o.Config.StillWorkingMinutes) * time.Minute
 }

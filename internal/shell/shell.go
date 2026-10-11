@@ -64,6 +64,7 @@ type Model struct {
 	wait          core.Wait // the followed wait: open, or the one that just ended
 	view          activity.View
 	skipped       string // ID of a wait the user skipped or closed
+	shownID       string // ID of the last wait recorded as shown
 	others        int    // other sessions with Claude working
 	today         core.WaitStats
 	started       bool
@@ -260,7 +261,8 @@ func (m *Model) follow(w core.Wait) {
 		// The user is still reading from the last wait: keep their place.
 		m.phase = awake
 		m.view.WaitStarted(info(w))
-		m.markShown()
+		// Not marked shown yet: checkGrace does that once the wait passes
+		// the grace delay, so quick answers don't count as shown.
 		if m.status == blocked {
 			m.view.WaitPaused()
 		}
@@ -314,15 +316,22 @@ func (m *Model) applyChange(c core.Change) tea.Cmd {
 	return nil
 }
 
-// checkGrace wakes the UI once Claude has been working long enough.
+// checkGrace wakes the UI once Claude has been working long enough, and
+// records the wait as shown at that moment.
 func (m *Model) checkGrace() tea.Cmd {
-	if m.phase != pending || m.status != working || m.wait.ID == m.skipped {
+	if m.status != working || m.wait.ID == "" || m.wait.ID == m.skipped {
 		return nil
 	}
 	if m.wait.Working(m.o.Now()) < time.Duration(m.o.Config.MinWaitSeconds)*time.Second {
 		return nil
 	}
-	return m.wake()
+	switch m.phase {
+	case pending:
+		return m.wake()
+	case awake: // a card was already open from the previous wait
+		m.markShown()
+	}
+	return nil
 }
 
 func (m *Model) wake() tea.Cmd {
@@ -336,7 +345,8 @@ func (m *Model) wake() tea.Cmd {
 }
 
 func (m *Model) markShown() {
-	if m.wait.ID != "" {
+	if m.wait.ID != "" && m.wait.ID != m.shownID {
+		m.shownID = m.wait.ID
 		_ = core.MarkShown(m.o.DB, m.wait.ID, m.o.Activity.ID())
 	}
 }

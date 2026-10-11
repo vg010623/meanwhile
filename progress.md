@@ -36,7 +36,7 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 
 1. **Write the curriculum.** Replace the three PLACEHOLDER concepts in `content/concepts/`. Set `content_dir` in config to preview drafts live.
 2. **Install for real:** `go install ./cmd/meanwhile && meanwhile setup`. This edits the real `~/.claude/settings.json`, so the owner should run it.
-3. **Manually verify the interactive-only behaviours** listed under "From the docs, not yet verified by hand" in `docs/claude-code-behaviour.md`: Esc/Ctrl+C, `idle_prompt` after an interrupt, `PermissionRequest`, `AskUserQuestion`. Then move them to the verified section.
+3. ~~Manually verify interactive behaviours~~: **done 11 Oct 2026 on Claude Code 2.1.296**; see `docs/claude-code-behaviour.md`. Four bugs found and fixed: superseded-wait end time, the 2 min still-working default, the blocked-screen hint, and shown-counting during quick succession. Only `StopFailure` is still unverified.
 4. **Go public:** `gh repo edit vg010623/meanwhile --visibility public --accept-visibility-change-consequences`.
 5. **Homebrew:** create the repo `vg010623/homebrew-tap` and add a repo secret `HOMEBREW_TAP_GITHUB_TOKEN` (a token with contents:write on the tap).
 6. **Release:** `git tag v0.1.0 && git push --tags`.
@@ -86,3 +86,5 @@ tmux isn't installed; use `expect`. A session that passed: sleep → `simulate s
 - `store.Open` uses `SetMaxOpenConns(1)`. Don't hold a `rows` open while running another query on the same DB, or it deadlocks.
 - Homebrew casks are macOS-only; Linux users install from the tarball or with `go install`. GoReleaser has deprecated `brews` in favour of `homebrew_casks`.
 - Under NO_COLOR, `ESC[30;H` in output is cursor positioning, not colour. Don't mistake it for a NO_COLOR bug.
+- **Esc in Claude fires no hook at all, and no `idle_prompt` follows it** (verified on 2.1.296). Interrupted waits are closed by the next prompt (ended at their last event), by `x`, or as stale after 30 min. The UI nudges after `still_working_minutes` (default 2), both on the working header and on the blocked screen.
+- A wait is marked `shown` only in `checkGrace`, once it has passed `min_wait_seconds`, even when a card stayed open from the previous wait (`Model.shownID` stops double writes).

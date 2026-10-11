@@ -96,15 +96,32 @@ func TestOpenWaitWorkingExcludesCurrentBlock(t *testing.T) {
 }
 
 func TestInterruptThenNewPrompt(t *testing.T) {
+	// Real case (Claude Code 2.1.296): last tool event 8 s in, Esc, next
+	// prompt 4.5 minutes later. The interrupted wait must count ~8 s, not 4.5 min.
 	m := NewMachine()
 	closed, _ := run(m,
 		evt(0, events.WaitStarted, "s"),
-		// user pressed Esc at ~20s: no hook
-		evt(30, events.WaitStarted, "s"),
-		evt(45, events.WaitEnded, "s", reason(events.EndCompleted)),
+		evt(8, events.InputResolved, "s"),
+		// user pressed Esc: no hook fires
+		evt(270, events.WaitStarted, "s"),
+		evt(285, events.WaitEnded, "s", reason(events.EndCompleted)),
 	)
-	if len(closed) != 2 || closed[0].EndReason != events.EndSuperseded || closed[1].Working(at(0)) != 15*time.Second {
+	if len(closed) != 2 || closed[0].EndReason != events.EndSuperseded {
 		t.Fatalf("got %+v", closed)
+	}
+	if closed[0].EndedAt != at(8) || closed[0].Working(at(0)) != 8*time.Second {
+		t.Errorf("superseded wait ended %s, working %s", closed[0].EndedAt.Sub(t0), closed[0].Working(at(0)))
+	}
+	if closed[1].Working(at(0)) != 15*time.Second {
+		t.Errorf("new wait working %s", closed[1].Working(at(0)))
+	}
+}
+
+func TestInterruptWithNoEventsEndsAtStart(t *testing.T) {
+	m := NewMachine()
+	closed, _ := run(m, evt(0, events.WaitStarted, "s"), evt(100, events.WaitStarted, "s"))
+	if closed[0].EndedAt != at(0) {
+		t.Errorf("ended %s", closed[0].EndedAt.Sub(t0))
 	}
 }
 

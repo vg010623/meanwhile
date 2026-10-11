@@ -235,12 +235,71 @@ func TestManualDone(t *testing.T) {
 }
 
 func TestStillWorkingPrompt(t *testing.T) {
+	// Esc in Claude fires no hook (verified on 2.1.296), so after the default
+	// 2 minutes of silence the header asks.
 	h := newHarness(t)
 	h.event(0, events.WaitStarted)
 	h.tick(5)
-	h.tick(11 * 60)
+	h.tick(110)
+	if strings.Contains(h.screen(), "Still working?") {
+		t.Errorf("prompt too early:\n%s", h.screen())
+	}
+	h.tick(130)
 	if !strings.Contains(h.screen(), "Still working?") {
-		t.Errorf("no prompt:\n%s", h.screen())
+		t.Errorf("no prompt after 2 min:\n%s", h.screen())
+	}
+}
+
+func TestBlockedScreenQuietHint(t *testing.T) {
+	// Esc on a permission dialog fires no hook (verified on 2.1.296): the
+	// blocked screen must offer a way out.
+	h := newHarness(t)
+	h.event(0, events.WaitStarted)
+	h.tick(5)
+	h.event(10, events.NeedsInput, func(e *events.Event) { e.InputKind = events.InputPermission })
+	h.tick(60)
+	if strings.Contains(h.screen(), "No sign of Claude") {
+		t.Errorf("hint too early:\n%s", h.screen())
+	}
+	h.tick(10 + 121)
+	if !strings.Contains(h.screen(), "Dealt with it? Press x.") {
+		t.Fatalf("no hint:\n%s", h.screen())
+	}
+	h.key("x")
+	var reason string
+	h.db.QueryRow(`SELECT end_reason FROM waits`).Scan(&reason)
+	if h.m.phase != asleep || reason != events.EndManual {
+		t.Errorf("x did not close: phase=%d reason=%q", h.m.phase, reason)
+	}
+}
+
+func TestQuickWaitWithOpenCardIsNotCountedShown(t *testing.T) {
+	h := newHarness(t)
+	h.event(0, events.WaitStarted)
+	h.tick(5)
+	h.event(10, events.WaitEnded, ended(events.EndCompleted))
+	// The user leaves the card open; a 3-second wait comes and goes.
+	h.event(20, events.WaitStarted)
+	quickID := h.m.wait.ID
+	h.tick(22)
+	h.event(23, events.WaitEnded, ended(events.EndCompleted))
+	// Then a long one passes the grace delay.
+	h.event(30, events.WaitStarted)
+	longID := h.m.wait.ID
+	h.tick(32)
+	shown := func(id string) (s int) {
+		h.db.QueryRow(`SELECT shown FROM waits WHERE id = ?`, id).Scan(&s)
+		return
+	}
+	if shown(longID) != 0 {
+		t.Error("long wait marked shown before the grace delay")
+	}
+	h.tick(35)
+	if shown(quickID) != 0 || shown(longID) != 1 {
+		t.Errorf("quick shown=%d long shown=%d", shown(quickID), shown(longID))
+	}
+	if h.act.starts != 1 {
+		t.Errorf("view restarted: %d", h.act.starts)
 	}
 }
 

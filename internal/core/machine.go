@@ -101,8 +101,10 @@ func (m *Machine) Apply(e events.Event) []Change {
 		var changes []Change
 		if w != nil {
 			// The user sent a new prompt while the old wait was still open:
-			// they must have interrupted Claude, which fires no hook.
-			changes = append(changes, m.close(w, e.TS, events.EndSuperseded, ""))
+			// they must have interrupted Claude, which fires no hook. End it
+			// at the last thing Claude did; the time since then was the user
+			// reading and typing, not Claude working.
+			changes = append(changes, m.close(w, prevEvent, events.EndSuperseded, ""))
 		}
 		nw := &Wait{
 			ID: e.ID, SessionID: e.SessionID, CWD: e.CWD, WorktreeRoot: e.WorktreeRoot,
