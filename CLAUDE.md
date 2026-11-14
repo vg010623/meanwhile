@@ -1,6 +1,8 @@
 # meanwhile: notes for Claude sessions
 
-**Read `progress.md` first.** It says what is done, what's next, and the decisions already made. Don't re-derive them.
+**Read `progress.md` first.** It says what is done, what's next, and the decisions already made. Don't re-derive them. If the user says "resume", continue from "M7: next steps" in `progress.md`.
+
+**Current work (M7):** a Claude Code mod that shows lessons inside Claude's own window. Before touching the mod, load the `plugin-authoring` skill: it gives this build's mods folder and API types. Confirm unknowns with a prototype before building on them, and record what's verified in `docs/claude-code-behaviour.md`.
 
 - The full approved design is in `docs/plan.md`. Section "6b. Decisions made" overrides anything earlier in that file.
 - Verified Claude Code behaviour (hook payloads, flags) goes in `docs/claude-code-behaviour.md`.

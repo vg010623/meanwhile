@@ -4,7 +4,32 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**All milestones M0–M6 done. v1 is feature-complete.** The remaining steps need the owner (see "What's left" below).
+**v1 (M0–M6) is done and working in a separate terminal tab. Next: M7, show the lessons inside Claude Code's own window (decided 14 Nov 2026).** If the user says "resume this", start at **"M7: next steps"** below.
+
+## M7: lessons inside Claude Code's window ("Option A")
+
+### Why
+Running `meanwhile` in a second tab is itself a context switch. The user wants lessons to appear in the same terminal where they talk to Claude, with a ✕ to close them. We chose a **Claude Code mod** (an extension that draws its own panel inside Claude's UI) over **Option B** (the hook asking iTerm2/WezTerm/Kitty/tmux to open a split). B stays the fallback if the M7 prototype disappoints. B's drawbacks: different code for each terminal, Apple Terminal can't split, and the new pane steals focus.
+
+### Planned shape (to confirm with the prototype)
+- **The Go app stays the brain:** curriculum, progress, stats, Go deeper, setup.
+- **The mod is a thin UI:** a TypeScript hooks module that draws the panel and calls the Go binary for content and progress through new JSON subcommands, e.g. `meanwhile lesson current --json`, `lesson next`, `lesson back`, `lesson known`, `lesson picker --json`. These are still to be designed in step 3. One process per action costs about 10 ms, which is fine.
+- **Timing and banners come from the mod's own events:** `turn.start`, `turn.complete`, `turn.abort` (which may finally give an instant Esc signal), plus the 4 s grace delay. Keep the existing hooks and spool for wait stats until the mod proves equivalent; decide then whether to retire them.
+- **The standalone TUI (`meanwhile` in a tab) stays** for terminals or setups without the mod.
+
+### Facts read from the mod API's type definitions (Claude Code 2.1.317; not yet tested)
+- To get the API and the mods folder: load the **`plugin-authoring` skill** first. It names the folder to write the mod in (per session, under `~/.claude/dev-mods/<session>/<mod-name>/`) and writes this build's type definitions file (`claude-code.d.ts`, about 14,000 lines; grep it, don't read it). A mod is `.claude-plugin/plugin.json`, `hooks/hooks.json` (`{"modules":["./register.tsx"]}`) and `hooks/register.tsx`. Check it with `claude plugin validate <dir>` and `claude plugin test <dir>`; develop with `claude --plugin-dir <dir>`. The skill's `examples/pane.tsx` is the panel template.
+- **Panel:** `$.ui.open({ id, title })`, drawn by a `ui.render` hook on `{ component: 'Pane', requestId: id }`. It docks beside the transcript from 110 columns (from 144 if the user didn't ask for it). Narrower, it waits undrawn (`isPlaced: false`), unless we use the `placement: 'inline'` strip above the prompt or the `AbovePrompt` band. `$.ui.close` exists. Elements come from `$.ui.resolve(e)` (`Box`, `Text`, `Button` with `onPress`).
+- **Keys:** the prompt keeps the keyboard. The panel gets keys only when focused (ctrl+x tab, a click, or `open({ focus })`). Esc always returns focus to the prompt. Buttons respond to a click, or Enter while focused.
+- **Events available:** `turn.start`, `turn.complete`, `turn.abort`, `stop`, `prompt.submit`, `session.start`, `session.end`, `ui.press`, `ui.close`, `ui.focus`, `key`. There are also nouns: `$.process` (run programs), `$.fs`, `$.clock` (timers), `$.store` (persists across sessions), `$.state` (per session, needs a `types/index.d.ts` contract), `$.ui.toast`, `$.ui.status`.
+- **Unknown until the prototype:** whether `turn.abort` fires on Esc; whether there is an event for permission prompts or AskUserQuestion; whether the panel draws and updates while Claude is mid-turn; how `turn.start` relates to subagent requests (the docs say it fires per model request, including subagents' `e.agentId`, so the start of a whole user turn may need `prompt.submit` instead); `$.process` call shape and speed.
+
+### M7: next steps
+1. **Load the `plugin-authoring` skill**, then grep the types for `'turn.abort'`, `'prompt.submit'`, `process: {`, `Pane: {` and any permission or needs-input event. Note the findings here.
+2. **Build a prototype mod** (`meanwhile-panel`) with static text, no Go calls yet. On prompt submit, start a 4 s timer and open a panel saying "Claude is working" with a placeholder card and a ✕ button. On finish, show "✔ Claude finished". On abort, show "■ stopped" or close. ✕ closes the panel. The user must answer "Turn them on" to the engine's one-time question.
+3. **Test it live with the user**, and record what's confirmed or refuted in `docs/claude-code-behaviour.md`: Esc → `turn.abort`, panel while working, focus and key feel, permission prompts, narrow windows.
+4. If it holds up, **design the JSON CLI** in `cmd/meanwhile` (`lesson_cmd.go`) reusing `internal/activities/learn` logic (it currently lives in the Bubble Tea view, so split the logic out of `view.go` first, with tests). Then wire the panel to it: Continue/recap, card, next/back, I know this, picker.
+5. **Packaging:** ship the mod in the repo (e.g. `mod/`), and have `meanwhile setup` offer to install it. Update the README and decide whether the hooks stay.
 
 ## What the project is (30 seconds)
 
@@ -32,7 +57,7 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 - [x] **M5**: `internal/deeper` (`Runner.Ask`, stream-json parser, error classification, first-byte and total timeouts, process-group cancel). `learn/deeper_view.go`: one-time consent screen with model choice (default / Sonnet / Haiku, stored in kv; config `[deeper] model` overrides), streaming, Esc cancel keeps the partial answer as `cancelled`, 2 stateless follow-ups, saved threads (`D` history, read-only), errors fall back to the cards. Verified against real Claude (see `docs/claude-code-behaviour.md`).
 - [x] **M6**: skip or quit during Go deeper keeps the partial answer; raw events pruned after 30 days (core migration v2 adds an index on `events.ts`); `.goreleaser.yaml` (darwin and linux, amd64 and arm64, CGO off, `homebrew_casks` to vg010623/homebrew-tap, skipped without `HOMEBREW_TAP_GITHUB_TOKEN`); `.github/workflows/release.yml` on `v*` tags; full README; CONTRIBUTING. Verified: `goreleaser check` passes, snapshot build works, CI is green on macOS and Linux, real-pty smoke tests pass (full flow, single-instance lock, NO_COLOR, compact).
 
-## What's left (needs the owner)
+## What's left on v1 (needs the owner; independent of M7)
 
 1. **Write the curriculum.** Replace the three PLACEHOLDER concepts in `content/concepts/`. Set `content_dir` in config to preview drafts live.
 2. **Install for real:** `go install ./cmd/meanwhile && meanwhile setup`. This edits the real `~/.claude/settings.json`, so the owner should run it.
