@@ -83,6 +83,10 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 5. **Homebrew:** create the repo `vg010623/homebrew-tap` and add a repo secret `HOMEBREW_TAP_GITHUB_TOKEN` (a token with contents:write on the tap).
 6. **Release:** `git tag v0.1.0 && git push --tags`.
 
+## Near-term direction (owner, 21 Nov 2026): more than static lessons
+
+Lessons about AI (plus Go deeper) are too narrow on their own. Plan **other things that genuinely help someone while Claude Code runs in their session**. This is the near future, not someday; design it with the owner before building. Being Claude Code-only is accepted on purpose. Rule for every feature that calls a model (Go deeper included): **say up front that it uses the person's own Claude account and usage** (subscription limits or API credits).
+
 ## Ideas for after v1 (from the plan)
 
 - The "predict which files Claude will change" activity: a new package in `internal/activities/`, registered in `cmd/meanwhile/app.go`. `WaitInfo.WorktreeRoot` is already passed in.
