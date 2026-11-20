@@ -1,0 +1,6 @@
+{
+  "name": "meanwhile-panel",
+  "version": "0.1.0",
+  "description": "Shows a meanwhile lesson in a panel while Claude works",
+  "types": "./types/index.d.ts"
+}

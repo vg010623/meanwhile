@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**v1 (M0–M6) is done and working in a separate terminal tab. Next: M7, show the lessons inside Claude Code's own window (decided 14 Nov 2026).** If the user says "resume this", start at **"M7: next steps"** below.
+**v1 (M0–M6) is done and working in a separate terminal tab. Now: M7, show the lessons inside Claude Code's own window (decided 14 Nov 2026). Steps 1–2 are done: the prototype mod is in `mod/meanwhile-panel/` and validates, but it has not been seen running yet.** If the user says "resume this", start at **"M7: next steps"** step 3 below.
 
 ## M7: lessons inside Claude Code's window ("Option A")
 
@@ -24,10 +24,23 @@ Running `meanwhile` in a second tab is itself a context switch. The user wants l
 - **Events available:** `turn.start`, `turn.complete`, `turn.abort`, `stop`, `prompt.submit`, `session.start`, `session.end`, `ui.press`, `ui.close`, `ui.focus`, `key`. There are also nouns: `$.process` (run programs), `$.fs`, `$.clock` (timers), `$.store` (persists across sessions), `$.state` (per session, needs a `types/index.d.ts` contract), `$.ui.toast`, `$.ui.status`.
 - **Unknown until the prototype:** whether `turn.abort` fires on Esc; whether there is an event for permission prompts or AskUserQuestion; whether the panel draws and updates while Claude is mid-turn; how `turn.start` relates to subagent requests (the docs say it fires per model request, including subagents' `e.agentId`, so the start of a whole user turn may need `prompt.submit` instead); `$.process` call shape and speed.
 
+### Step 1 findings (types of Claude Code 2.1.295, read 15 Nov 2026; still not tested live)
+- **Esc:** `turn.abort` is only a method (`$.turn.abort({ turnId })`), not an event. Instead, **`turn.complete` carries `reason: 'answer' | 'aborted' | 'refusal' | 'error'`** (and `isAborted`). So an Esc should be detected instantly, which the hooks never could.
+- **Turn start:** `turn.start` (`{ text, turnId }`) fires once per user turn. A subagent's run raises no `turn.start`; its `turn.complete` has `agentId` set, so ignore those. `turn.step` is the per-model-request event.
+- **Needs input:** there's no direct event. The prototype uses two signals. (1) The **`tool.check`** verdict: `decision === 'ask'` means a permission dialog, but the docs say "ask puts it to the mode's decider", so auto mode may settle it with no dialog. It needs a live check. (2) **`tool.call`** with `tool === 'AskUserQuestion'`. The block ends when that call's `next(e)` resolves, which for a permission ask is after the tool has also run.
+- **`$.process.run(argv, { cwd, env, stdin, timeoutMs })`** resolves `{ exitCode, stdout, stderr }` (30 s timeout by default). `$.process.spawn` streams. This is what step 4 will use to call the Go binary.
+- **Timers:** `$.clock.after(ms, fn)` returns `{ cancel }`. `$.clock.now()` resolves Unix ms.
+- **Panel width:** a panel the mod opens unasked (as ours is, from a timer) seats only from **144 columns**. Narrower, it waits undrawn. If that's a problem in practice, switch to the `AbovePrompt` band.
+- **Gotcha:** `claude` on the owner's PATH is an old Homebrew install (2.1.263), and its `plugin validate` rejects `tool.check`. Validate with the running build instead, e.g. `~/.local/share/claude/versions/<version> plugin validate mod/meanwhile-panel`.
+- **Gotcha:** the validator requires any function that takes `$` to be declared at the top level of the module (a closure inside `register` is refused).
+
+### The prototype (`mod/meanwhile-panel/`)
+`hooks/register.tsx` with a `$.state` contract in `types/index.d.ts` (phase: idle / working / blocked / finished / stopped / error). `turn.start` sets "working" and starts a 4 s `clock.after`; when it fires and Claude is still working, `$.ui.open` opens the panel. `turn.complete` sets finished, stopped (aborted) or error, or resets silently if the panel never opened. `tool.check` ask and `tool.call` AskUserQuestion set "blocked"; the end of that call sets "working" again. The panel shows a header, a placeholder card (or "Switch to Claude…" while blocked) and a `[ ✕ Close ]` button (hotkey `x` when focused). There are no tests yet (`claude plugin test`; see the skill's reference for `claude-code/testing`). To try it: `claude --plugin-dir ~/dev/projects/meanwhile/mod/meanwhile-panel`, with the terminal at least 144 columns wide.
+
 ### M7: next steps
-1. **Load the `plugin-authoring` skill**, then grep the types for `'turn.abort'`, `'prompt.submit'`, `process: {`, `Pane: {` and any permission or needs-input event. Note the findings here.
-2. **Build a prototype mod** (`meanwhile-panel`) with static text, no Go calls yet. On prompt submit, start a 4 s timer and open a panel saying "Claude is working" with a placeholder card and a ✕ button. On finish, show "✔ Claude finished". On abort, show "■ stopped" or close. ✕ closes the panel. The user must answer "Turn them on" to the engine's one-time question.
-3. **Test it live with the user**, and record what's confirmed or refuted in `docs/claude-code-behaviour.md`: Esc → `turn.abort`, panel while working, focus and key feel, permission prompts, narrow windows.
+1. ~~Load the `plugin-authoring` skill and grep the types.~~ Done; see "Step 1 findings".
+2. ~~Build a prototype mod.~~ Done; see "The prototype".
+3. **Test it live with the user** (start Claude with `--plugin-dir`, as above), and record what's confirmed or refuted in `docs/claude-code-behaviour.md`: Esc → `turn.abort`, panel while working, focus and key feel, permission prompts, narrow windows.
 4. If it holds up, **design the JSON CLI** in `cmd/meanwhile` (`lesson_cmd.go`) reusing `internal/activities/learn` logic (it currently lives in the Bubble Tea view, so split the logic out of `view.go` first, with tests). Then wire the panel to it: Continue/recap, card, next/back, I know this, picker.
 5. **Packaging:** ship the mod in the repo (e.g. `mod/`), and have `meanwhile setup` offer to install it. Update the README and decide whether the hooks stay.
 
