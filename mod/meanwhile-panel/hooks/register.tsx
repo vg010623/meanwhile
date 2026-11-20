@@ -15,6 +15,14 @@ const GRACE_MS = 4000
 
 const idle: PanelView = { phase: 'idle', startedAt: 0, endedAt: 0 }
 const view = atom({ plugin: 'meanwhile-panel', key: 'view' } as const, idle)
+const card = atom({ plugin: 'meanwhile-panel', key: 'card' } as const, 0)
+
+// Placeholder cards until the panel reads real lessons from the Go app.
+const CARDS = [
+  { title: 'A function you can\'t read', body: 'PLACEHOLDER card 1. A model is a function from input to output whose rules were learned from examples, not written by a person.' },
+  { title: 'Weights', body: 'PLACEHOLDER card 2. The learned rules live in billions of numbers called weights. Training nudges them until the outputs look right.' },
+  { title: 'Why it matters', body: 'PLACEHOLDER card 3. Because nobody wrote the rules, nobody can read them off either: you learn what a model does by testing it.' },
+]
 
 async function setPhase($: EngineInterface, phase: Phase) {
   const now = await $.clock.now()
@@ -109,7 +117,10 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const v = await read($, view)
+    const i = await read($, card)
     const close = () => $.ui.close({ id: PANE })
+    const back = () => update($, card, n => Math.max(n - 1, 0))
+    const forward = () => update($, card, n => Math.min(n + 1, CARDS.length - 1))
 
     const header: Record<Phase, string> = {
       idle: 'Lesson time · no Claude run in progress',
@@ -130,19 +141,25 @@ export const register: Register = on => {
           <Text>Switch to Claude. Your card will be here when you get back.</Text>
         ) : (
           <Box flexDirection="column">
-            <Text bold>What is a model · card 1 of 3</Text>
+            <Text dimColor>What is a model · card {i + 1} of {CARDS.length}</Text>
+            <Text bold>{CARDS[i].title}</Text>
             <Text> </Text>
-            <Text>
-              PLACEHOLDER card. The real lesson comes from the meanwhile app in the next
-              step. This panel only checks the timing: it opens after 4 s of work, pauses
-              when Claude needs you, and says how the turn ended.
-            </Text>
+            <Text>{CARDS[i].body}</Text>
           </Box>
         )}
         <Text> </Text>
-        <Button role="dismiss" hotkey="x" onPress={close}>
-          ✕ Close
-        </Button>
+        <Box flexDirection="row" gap={2}>
+          <Button hotkey="b" dimColor={i === 0} onPress={back}>
+            ‹ Back
+          </Button>
+          <Button variant="primary" hotkey="n" autoFocus onPress={forward}>
+            Next ›
+          </Button>
+          <Button role="dismiss" hotkey="x" onPress={close}>
+            ✕ Close
+          </Button>
+        </Box>
+        <Text dimColor>Click a button, or ctrl+x tab to focus here, then n / b / x. Esc returns to the prompt.</Text>
       </Box>
     )
   })

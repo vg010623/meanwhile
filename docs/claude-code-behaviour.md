@@ -48,6 +48,21 @@ Second round of bugs from the same testing, fixed:
 - Another session blocked on the user was shown as "+1 other session working". It now says "1 other session needs you".
 - Pressing `x` to dismiss "Claude finished" just as a new prompt started ended the new run. For the first 10 s of a wait, `x` now only closes the card.
 
+## Mod API, verified live on Claude Code 2.1.325 (20–21 Nov 2026)
+
+Checked with the prototype `mod/meanwhile-panel`, loaded by hot reload into an interactive session in auto and default modes. The terminal was more than 144 columns wide.
+
+- **`turn.start` → `$.clock.after(4000)` → `$.ui.open`** opens the panel beside the transcript while Claude is working. The panel draws and redraws mid-turn, whenever a `$.state` value it read is written.
+- **`turn.complete`** fires at the end of the turn with `reason: 'answer'` ("✔ Claude finished").
+- **Esc mid-turn: `turn.complete` fires at once with `reason: 'aborted'`.** The panel showed "■ Claude stopped" instantly. This closes the hooks' biggest gap (no hook fires on Esc).
+- **Permission dialog** (default mode, `ls -la /tmp`): a `tool.check` hook saw `decision: 'ask'` before the dialog, and the panel showed "needs your input". The end of that call's `tool.call` `next(e)` brought it back.
+- **AskUserQuestion:** `tool.call` with `tool === 'AskUserQuestion'` blocks until the person answers, and the panel showed "needs your input" for the whole time.
+- **Buttons respond to a mouse click** (`onPress`), and the panel redraws with the new state.
+- **Not working:** focusing the panel with **ctrl+x then tab**, to use the `hotkey` letters (n/b/x), did nothing for the owner. Clicking works, so it isn't blocking. Still to investigate: the focus chord on this build, or `open({ focus: true })`.
+- **Hot reload:** a mod in a session's `~/.claude/dev-mods/<session-id>/` folder doesn't come back after the session restarts or forks (the id changes). Reload the `plugin-authoring` skill and copy the mod into the new folder, or start with `claude --plugin-dir mod/meanwhile-panel`.
+
 ## Not yet verified
 
 - `StopFailure` payload: documented as carrying `error_type`. We read `error_type` and fall back to `error`.
+- Mod: whether `tool.check` returns `ask` in **auto** mode for a call the classifier then approves without a dialog. If it does, the panel would flash "needs your input" with no dialog on screen.
+- Mod: how a panel opened while the window is under 144 columns behaves (it is documented to wait undrawn).

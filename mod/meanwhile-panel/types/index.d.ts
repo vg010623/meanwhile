@@ -10,6 +10,6 @@ export type PanelView = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'meanwhile-panel': { view: PanelView }
+    'meanwhile-panel': { view: PanelView; card: number }
   }
 }

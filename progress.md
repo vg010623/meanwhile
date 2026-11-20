@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**v1 (M0–M6) is done and working in a separate terminal tab. Now: M7, show the lessons inside Claude Code's own window (decided 14 Nov 2026). Steps 1–2 are done: the prototype mod is in `mod/meanwhile-panel/` and validates, but it has not been seen running yet.** If the user says "resume this", start at **"M7: next steps"** step 3 below.
+**v1 (M0–M6) is done and working in a separate terminal tab. Now: M7, show the lessons inside Claude Code's own window (decided 14 Nov 2026). Steps 1–3 are done: the prototype mod in `mod/meanwhile-panel/` works live (see `docs/claude-code-behaviour.md`, "Mod API, verified live"): the panel opens after 4 s, shows finished, shows stopped instantly on Esc, shows needs-input for permission and AskUserQuestion, and Back/Next work by mouse click.** If the user says "resume this", start at **"M7: next steps"** step 4 below.
 
 ## M7: lessons inside Claude Code's window ("Option A")
 
@@ -40,7 +40,8 @@ Running `meanwhile` in a second tab is itself a context switch. The user wants l
 ### M7: next steps
 1. ~~Load the `plugin-authoring` skill and grep the types.~~ Done; see "Step 1 findings".
 2. ~~Build a prototype mod.~~ Done; see "The prototype".
-3. **Test it live with the user** (start Claude with `--plugin-dir`, as above), and record what's confirmed or refuted in `docs/claude-code-behaviour.md`: Esc → `turn.abort`, panel while working, focus and key feel, permission prompts, narrow windows.
+3. ~~Test it live with the user.~~ Done on 2.1.325. One open item: keyboard focus (ctrl+x tab) didn't work, but clicks do. Progress is only in `$.state` for now (per session); step 4 moves it into the Go app's database.
+3b. (Original wording of step 3, kept for reference:) **Test it live with the user** (start Claude with `--plugin-dir`, as above), and record what's confirmed or refuted in `docs/claude-code-behaviour.md`: Esc → `turn.abort`, panel while working, focus and key feel, permission prompts, narrow windows.
 4. If it holds up, **design the JSON CLI** in `cmd/meanwhile` (`lesson_cmd.go`) reusing `internal/activities/learn` logic (it currently lives in the Bubble Tea view, so split the logic out of `view.go` first, with tests). Then wire the panel to it: Continue/recap, card, next/back, I know this, picker.
 5. **Packaging:** ship the mod in the repo (e.g. `mod/`), and have `meanwhile setup` offer to install it. Update the README and decide whether the hooks stay.
 
