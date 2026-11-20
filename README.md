@@ -2,7 +2,7 @@
 
 Learn AI fundamentals in the seconds and minutes you spend waiting on Claude Code.
 
-When you give Claude Code a prompt, you wait. Most of us reach for our phone, and then come back late with the thread lost. `meanwhile` runs in a split pane next to Claude. It stays quiet until Claude starts working, then shows a short lesson card, readable in 20 to 40 seconds, about how AI actually works: models, tokens, embeddings, attention, context windows, agents. When Claude finishes or needs you, it says so clearly, and you go back to work on time.
+When you give Claude Code a prompt, you wait. Most of us reach for our phone, and then come back late with the thread lost. `meanwhile` shows lessons right next to Claude: in a panel inside Claude Code's own window, in a split pane beside it, or both (you choose at setup). It stays quiet until Claude starts working, then shows a short lesson card, readable in 20 to 40 seconds, about how AI actually works: models, tokens, embeddings, attention, context windows, agents. When Claude finishes or needs you, it says so clearly, and you go back to work on time.
 
 ```
 ● Claude is working · 0m 41s · my-app
@@ -37,10 +37,15 @@ Or download a binary from the [releases page](https://github.com/vg010623/meanwh
 
 ```sh
 meanwhile setup      # adds a few hooks to ~/.claude/settings.json (shows the change first)
-meanwhile            # run this in a split pane or a second terminal tab
 ```
 
-`setup` keeps your existing hooks and settings, saves a backup of the old file, and shows exactly what it will add before writing anything. `meanwhile doctor` checks that everything is connected.
+`setup` keeps your existing hooks and settings, saves a backup of the old file, and shows exactly what it will add before writing anything. Then it asks where you want your lessons:
+
+1. **Inside Claude Code**: a panel next to the chat. `setup` installs it with `claude plugin install meanwhile-panel --marketplace vg010623/meanwhile`. It opens by itself when Claude works for more than a few seconds; type `/meanwhile` in Claude Code to open it any time (for example after closing it). It docks beside the chat on wide terminals (about 144 columns or more when it opens by itself).
+2. **In a separate terminal tab**: run `meanwhile` in a split pane or a second tab.
+3. **Both** (the default). Your progress is shared, so you can switch between them freely.
+
+Run `meanwhile setup` again to change your choice (`--mode panel|tab|both` skips the question). `meanwhile doctor` checks that everything is connected.
 
 ## How it works
 
@@ -48,7 +53,9 @@ meanwhile            # run this in a split pane or a second terminal tab
 2. **The app watches the log.** The `meanwhile` app in your split pane reads each new line and tracks Claude's state for each session: working, waiting for you, or done.
 3. **Lessons only while Claude is working.** After 4 seconds of work (so quick answers never flash a card), a lesson appears. If Claude stops to ask for permission or a question, the lesson hides and you see **⚠ Claude needs your input**, because that's your cue to go back. When Claude finishes, a banner says **✔ Claude finished**, and you can finish the card or close it.
 
-Pressing Esc or Ctrl+C in Claude doesn't trigger any hook, so `meanwhile` works it out a little later. It notices when you send your next prompt, or when Claude reports it has gone idle about a minute after. You can also press `x` to say Claude is done.
+The panel inside Claude Code gets these moments straight from Claude Code instead, including Esc, which it shows the instant you press it (**■ Claude stopped**). Its buttons (Back, Next, I know this, Pick another, Close) work with a click.
+
+In the terminal app, pressing Esc or Ctrl+C in Claude doesn't trigger any hook, so `meanwhile` works it out a little later. It notices when you send your next prompt, or when Claude reports it has gone idle about a minute after. You can also press `x` to say Claude is done.
 
 ## Using it
 
@@ -105,7 +112,7 @@ There is no telemetry. The only network traffic is the "Go deeper" call you star
 ## Uninstall
 
 ```sh
-meanwhile uninstall           # removes only meanwhile's hooks, even if you've edited the file since
+meanwhile uninstall           # removes only meanwhile's hooks (even if you've edited the file since) and the panel
 meanwhile uninstall --purge   # also deletes progress and history
 ```
 

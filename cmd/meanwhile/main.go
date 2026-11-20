@@ -36,6 +36,10 @@ type env struct {
 	stdout, stderr io.Writer
 	now            func() time.Time
 	paths          paths.Paths
+	// claude runs the Claude Code CLI (to install the panel). interactive
+	// passes the terminal through; otherwise the output is returned. nil
+	// means Claude Code isn't available.
+	claude func(interactive bool, args ...string) (string, error)
 }
 
 func main() {
@@ -49,7 +53,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "meanwhile:", err)
 		os.Exit(1)
 	}
-	e := env{stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr, now: time.Now, paths: p}
+	e := env{stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr, now: time.Now, paths: p, claude: runClaude}
 	os.Exit(run(os.Args[1:], e))
 }
 

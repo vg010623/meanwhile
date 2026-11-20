@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,7 +102,7 @@ func TestSetupAndUninstall(t *testing.T) {
 	}
 
 	te = newTestEnv(t, "y\n")
-	if code := run([]string{"setup", "--settings", settings, "--bin", bin}, te.env); code != 0 {
+	if code := run([]string{"setup", "--settings", settings, "--bin", bin, "--mode", "tab"}, te.env); code != 0 {
 		t.Fatalf("setup: exit %d\n%s%s", code, te.out, te.errOut)
 	}
 	if _, missing, _ := install.Installed(settings); len(missing) != 0 {
@@ -191,5 +192,87 @@ func TestLessonCommand(t *testing.T) {
 	}
 	if code := run([]string{"lesson", "bogus"}, te.env); code != 2 {
 		t.Errorf("bogus action: exit %d", code)
+	}
+}
+
+// fakeClaude records the Claude Code commands setup runs.
+func fakeClaude(te *testEnv, fail bool) *[]string {
+	var calls []string
+	te.env.claude = func(interactive bool, args ...string) (string, error) {
+		calls = append(calls, strings.Join(args, " "))
+		if fail {
+			return "not installed", errors.New("exit status 1")
+		}
+		return "", nil
+	}
+	return &calls
+}
+
+func TestSetupLessonModes(t *testing.T) {
+	bin := fakeBinary(t)
+	cases := []struct {
+		answer, want string
+	}{
+		{"1", "plugin install meanwhile-panel --marketplace vg010623/meanwhile"},
+		{"3", "plugin install meanwhile-panel --marketplace vg010623/meanwhile"},
+		{"", "plugin install meanwhile-panel --marketplace vg010623/meanwhile"}, // default: both
+		{"2", "plugin uninstall meanwhile-panel@meanwhile"},                     // tab only removes the panel
+	}
+	for _, c := range cases {
+		settings := filepath.Join(t.TempDir(), "settings.json")
+		te := newTestEnv(t, "y\n"+c.answer+"\n")
+		calls := fakeClaude(&te, false)
+		if code := run([]string{"setup", "--settings", settings, "--bin", bin}, te.env); code != 0 {
+			t.Fatalf("answer %q: exit %d\n%s%s", c.answer, code, te.out, te.errOut)
+		}
+		if len(*calls) != 1 || (*calls)[0] != c.want {
+			t.Errorf("answer %q: claude calls %v", c.answer, *calls)
+		}
+		tab := strings.Contains(te.out.String(), "For the terminal app")
+		if wantTab := c.answer != "1"; tab != wantTab {
+			t.Errorf("answer %q: tab instructions shown = %v\n%s", c.answer, tab, te.out)
+		}
+	}
+}
+
+func TestSetupAgainSwitchesModeWithoutTouchingHooks(t *testing.T) {
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	bin := fakeBinary(t)
+	te := newTestEnv(t, "")
+	fakeClaude(&te, false)
+	run([]string{"setup", "--settings", settings, "--bin", bin, "--yes", "--mode", "tab"}, te.env)
+	before, _ := os.ReadFile(settings)
+
+	te = newTestEnv(t, "")
+	calls := fakeClaude(&te, false)
+	if code := run([]string{"setup", "--settings", settings, "--bin", bin, "--mode", "panel", "--marketplace", "/src/meanwhile"}, te.env); code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, te.out, te.errOut)
+	}
+	if after, _ := os.ReadFile(settings); string(after) != string(before) {
+		t.Error("switching mode rewrote the settings file")
+	}
+	if len(*calls) != 1 || (*calls)[0] != "plugin install meanwhile-panel --marketplace /src/meanwhile" {
+		t.Errorf("claude calls %v", *calls)
+	}
+}
+
+func TestSetupPanelInstallFailureIsReported(t *testing.T) {
+	te := newTestEnv(t, "")
+	fakeClaude(&te, true)
+	code := run([]string{"setup", "--settings", filepath.Join(t.TempDir(), "s.json"), "--bin", fakeBinary(t), "--yes", "--mode", "panel"}, te.env)
+	if code != 1 || !strings.Contains(te.errOut.String(), "claude plugin install meanwhile-panel") {
+		t.Errorf("exit %d\n%s", code, te.errOut)
+	}
+	if code := run([]string{"setup", "--mode", "bogus", "--settings", filepath.Join(t.TempDir(), "s.json"), "--bin", fakeBinary(t), "--yes"}, te.env); code != 2 {
+		t.Errorf("bogus mode: exit %d", code)
+	}
+}
+
+func TestUninstallRemovesPanel(t *testing.T) {
+	te := newTestEnv(t, "")
+	calls := fakeClaude(&te, false)
+	run([]string{"uninstall", "--settings", filepath.Join(t.TempDir(), "s.json"), "--yes"}, te.env)
+	if len(*calls) != 1 || (*calls)[0] != "plugin uninstall meanwhile-panel@meanwhile" {
+		t.Errorf("claude calls %v", *calls)
 	}
 }

@@ -1,6 +1,10 @@
 {
   "name": "meanwhile-panel",
-  "version": "0.1.0",
-  "description": "Shows a meanwhile lesson in a panel while Claude works",
-  "types": "./types/index.d.ts"
+  "version": "0.2.0",
+  "description": "Short AI lessons in a panel next to the chat while Claude works",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "vg010623"
+  },
+  "license": "MIT"
 }

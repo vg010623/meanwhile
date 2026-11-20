@@ -19,6 +19,8 @@ func cmdSetup(args []string, e env) int {
 	yes := fl.Bool("yes", false, "don't ask for confirmation")
 	settings := fl.String("settings", "", "Claude Code settings file (default: ~/.claude/settings.json)")
 	bin := fl.String("bin", "", "path of the meanwhile binary the hooks should run (default: this binary)")
+	modeFlag := fl.String("mode", "", "where lessons appear: panel (inside Claude Code), tab (terminal app) or both (default: ask)")
+	marketplace := fl.String("marketplace", defaultMarketSrc, "where Claude Code installs the panel from: owner/repo, a git URL or a folder")
 	if err := fl.Parse(args); err != nil {
 		return 2
 	}
@@ -41,7 +43,10 @@ func cmdSetup(args []string, e env) int {
 	}
 	if !r.Changed {
 		fmt.Fprintf(e.stdout, "meanwhile's hooks are already set up in %s.\n", path)
-		return 0
+		if *dryRun {
+			return 0
+		}
+		return chooseAndSetupLessons(e, *modeFlag, *marketplace)
 	}
 
 	fmt.Fprintf(e.stdout, "meanwhile will add %d hooks to %s.\nYour existing hooks and settings are kept as they are.\n\n", len(install.Specs), path)
@@ -64,8 +69,18 @@ func cmdSetup(args []string, e env) int {
 		fmt.Fprintf(e.stdout, "Saved a backup of your old settings to %s\n", backup)
 	}
 	fmt.Fprintln(e.stdout, "Done. Claude Code picks up the hooks automatically.")
-	fmt.Fprintln(e.stdout, "\nNext: open a split pane or a new terminal tab and run `meanwhile`.")
-	return 0
+	return chooseAndSetupLessons(e, *modeFlag, *marketplace)
+}
+
+// chooseAndSetupLessons is the second half of setup: the hooks are in, now
+// pick where lessons appear. Running setup again switches.
+func chooseAndSetupLessons(e env, modeFlag, marketplace string) int {
+	mode, err := chooseMode(e, modeFlag)
+	if err != nil {
+		fmt.Fprintln(e.stderr, "meanwhile:", err)
+		return 2
+	}
+	return setupLessons(e, mode, marketplace)
 }
 
 func cmdUninstall(args []string, e env) int {
@@ -105,6 +120,7 @@ func cmdUninstall(args []string, e env) int {
 	} else {
 		fmt.Fprintf(e.stdout, "No meanwhile hooks found in %s.\n", path)
 	}
+	removePanel(e)
 
 	if *purge {
 		fmt.Fprintf(e.stdout, "\nThis deletes all meanwhile data:\n  %s\n  %s\n", e.paths.State, e.paths.Config)
