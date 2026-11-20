@@ -24,7 +24,7 @@ You need [Claude Code](https://claude.com/claude-code) (a recent version: the pa
 Download the binary for your machine from the [releases page](https://github.com/vg010623/meanwhile/releases) (`darwin_arm64` for Apple silicon Macs, `darwin_amd64` for Intel Macs, `linux_amd64` / `linux_arm64` for Linux) and put it on your PATH. For example, on an Apple silicon Mac:
 
 ```sh
-curl -fsSL https://github.com/vg010623/meanwhile/releases/download/v0.1.0-beta.1/meanwhile_0.1.0-beta.1_darwin_arm64.tar.gz | tar xz meanwhile
+curl -fsSL https://github.com/vg010623/meanwhile/releases/download/v0.1.0-beta.2/meanwhile_0.1.0-beta.2_darwin_arm64.tar.gz | tar xz meanwhile
 mkdir -p ~/.local/bin && mv meanwhile ~/.local/bin/
 ```
 
