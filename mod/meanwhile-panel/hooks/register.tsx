@@ -41,10 +41,10 @@ You have no tools and cannot see any files. Never offer to run, open or look at 
 // The running Go deeper call, so Stop (or leaving the card) can cut it.
 let deeperAbort: AbortController | undefined
 
-// The binary is found on PATH, in ~/go/bin (go install) or Homebrew's bin;
+// The binary is found on PATH, in ~/.local/bin, ~/go/bin (go install) or Homebrew's bin;
 // MEANWHILE_BIN overrides it.
 const RUN_LESSON =
-  'PATH="$PATH:$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin"; exec "${MEANWHILE_BIN:-meanwhile}" lesson "$@"'
+  'PATH="$PATH:$HOME/.local/bin:$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin"; exec "${MEANWHILE_BIN:-meanwhile}" lesson "$@"'
 
 async function setPhase($: EngineInterface, phase: Phase) {
   const now = await $.clock.now()
