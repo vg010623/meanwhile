@@ -69,6 +69,11 @@ func Plan(settingsPath, bin string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if upToDate(root, bin) {
+		// Already set up for this binary. Other tools may have added their
+		// hooks after ours since; re-adding ours would only reorder them.
+		return Result{Before: before, After: before}, nil
+	}
 	removed := removeOurs(root)
 	hooks := ensureObject(root, "hooks")
 	for _, s := range Specs {
@@ -277,6 +282,52 @@ func removeOurs(root *object) int {
 		root.del("hooks")
 	}
 	return removed
+}
+
+// upToDate reports whether every spec is installed exactly once, as Plan
+// would write it for bin, and nothing else of ours is there. Where it sits
+// among other hooks doesn't matter.
+func upToDate(root *object, bin string) bool {
+	hv, ok := root.get("hooks")
+	if !ok {
+		return false
+	}
+	hooks, ok := hv.(*object)
+	if !ok {
+		return false
+	}
+	total := 0
+	for _, event := range hooks.keys {
+		total += countOurs(hooks.vals[event])
+	}
+	if total != len(Specs) {
+		return false
+	}
+	for _, s := range Specs {
+		groups, _ := hooks.vals[s.Event].([]any)
+		found := false
+		for _, g := range groups {
+			group, ok := g.(*object)
+			if !ok {
+				continue
+			}
+			entries, _ := group.vals["hooks"].([]any)
+			if len(entries) != 1 || !isOurs(entries[0]) {
+				continue
+			}
+			m, _ := group.vals["matcher"].(string)
+			e := entries[0].(*object)
+			cmd, _ := e.vals["command"].(string)
+			timeout, _ := e.vals["timeout"].(json.Number)
+			if m == s.Matcher && cmd == Command(bin) && timeout.String() == fmt.Sprint(hookTimeoutSeconds) {
+				found = true
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func countOurs(v any) int {

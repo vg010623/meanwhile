@@ -130,6 +130,50 @@ func TestSetupIsIdempotent(t *testing.T) {
 	}
 }
 
+// Another tool adding its hooks after ours must not make setup reorder the
+// file and report "will add 11 hooks" (seen on the owner's machine).
+func TestSetupIsIdempotentWhenOtherHooksComeAfterOurs(t *testing.T) {
+	p := writeSettings(t, userSettings)
+	setup(t, p)
+	edited := strings.Replace(read(t, p), `"SessionStart": [`, `"SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash other-tool.sh"
+          }
+        ]
+      },`, 1)
+	// Put the other tool's group after ours instead of before.
+	edited = moveFirstGroupToEnd(t, edited, "SessionStart")
+	os.WriteFile(p, []byte(edited), 0o644)
+	r, err := Plan(p, bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Changed {
+		t.Errorf("setup would rewrite an up-to-date file:\n%s", Diff(r.Before, r.After, 2))
+	}
+	// A different binary still counts as a change.
+	if r, _ := Plan(p, "/opt/new/meanwhile"); !r.Changed {
+		t.Error("a new binary path was not picked up")
+	}
+}
+
+// moveFirstGroupToEnd reorders one event's groups through the JSON tree.
+func moveFirstGroupToEnd(t *testing.T, content, event string) string {
+	t.Helper()
+	v, err := parseJSON([]byte(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := v.(*object)
+	hooks := root.vals["hooks"].(*object)
+	groups := hooks.vals[event].([]any)
+	hooks.set(event, append(groups[1:], groups[0]))
+	return string(formatJSON(root)) + "\n"
+}
+
 func TestSetupReplacesOldBinaryPath(t *testing.T) {
 	p := writeSettings(t, userSettings)
 	setup(t, p)

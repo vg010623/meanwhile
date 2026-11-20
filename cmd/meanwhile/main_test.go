@@ -85,10 +85,14 @@ func TestSetupAndUninstall(t *testing.T) {
 	_ = os.WriteFile(settings, []byte(original), 0o644)
 	bin := fakeBinary(t)
 
-	// Declining changes nothing.
-	te := newTestEnv(t, "n\n")
-	if code := run([]string{"setup", "--settings", settings, "--bin", bin}, te.env); code != 1 {
-		t.Fatalf("decline: exit %d\n%s", code, te.out)
+	// Declining changes nothing, but still asks where lessons should go.
+	te := newTestEnv(t, "n\n2\n")
+	calls := fakeClaude(&te, true) // the panel isn't installed: its removal fails quietly
+	if code := run([]string{"setup", "--settings", settings, "--bin", bin}, te.env); code != 0 {
+		t.Fatalf("decline: exit %d\n%s%s", code, te.out, te.errOut)
+	}
+	if !strings.Contains(te.out.String(), "How do you want your lessons?") || len(*calls) != 1 {
+		t.Errorf("decline skipped the lesson choice:\n%s", te.out)
 	}
 	if b, _ := os.ReadFile(settings); string(b) != original {
 		t.Fatal("declined setup changed the file")

@@ -57,8 +57,10 @@ func cmdSetup(args []string, e env) int {
 		return 0
 	}
 	if !*yes && !confirm(e, "Apply this change?") {
-		fmt.Fprintln(e.stdout, "Nothing was changed.")
-		return 1
+		// The panel works without the hooks (only stats and the terminal
+		// app need them), so still offer the lesson choice.
+		fmt.Fprintln(e.stdout, "Your settings were not changed.")
+		return chooseAndSetupLessons(e, *modeFlag, *marketplace)
 	}
 	backup, err := install.Apply(path, r, e.now())
 	if err != nil {
