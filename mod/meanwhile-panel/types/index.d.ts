@@ -40,12 +40,23 @@ export type Lesson = {
   notice?: string
 }
 
+// "Go deeper": one model call through the person's own Claude session.
+export type DeeperView = {
+  status: 'idle' | 'consent' | 'asking' | 'done' | 'error'
+  cardId: string // the card it is about
+  model: string
+  text: string
+  error: string
+  tokens: number // input + output, to show what it used
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'meanwhile-panel': {
       view: PanelView
       lesson: Lesson | null // null until loaded
       lessonError: string // "" when the last call worked
+      deeper: DeeperView
     }
   }
 }
