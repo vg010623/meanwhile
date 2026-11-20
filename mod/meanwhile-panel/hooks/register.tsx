@@ -75,6 +75,26 @@ export const register: Register = on => {
   let wantsOpen = false // the grace delay passed while Claude was blocked
   let blockedBy = '' // tool_use_id of the call that is waiting on the person
 
+  // /meanwhile opens the panel at any time: after closing it by mistake, or
+  // for a lesson while Claude isn't working. Asked for, it seats at any width.
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'meanwhile',
+      description: 'Open the meanwhile lesson panel',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'meanwhile' }, async $ => {
+    const v = await read($, view)
+    if (v.phase !== 'working' && v.phase !== 'blocked') {
+      await update($, view, () => idle) // no run in progress: plain lesson time
+    }
+    await openPanel($)
+    isOpen = true
+    return { text: 'meanwhile panel opened.' }
+  })
+
   on('turn.start', async ($, e, next) => {
     const now = await $.clock.now()
     turnId = e.turnId
