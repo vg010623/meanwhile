@@ -164,6 +164,16 @@ export const register: Register = on => {
       error: '✖ Claude stopped with an error',
     }
 
+    // Theme keys, so the colors follow the person's light or dark theme.
+    const headerColor: Record<Phase, string | undefined> = {
+      idle: 'subtle',
+      working: undefined, // the default text color
+      blocked: 'warning',
+      finished: 'success',
+      stopped: 'permission',
+      error: 'error',
+    }
+
     // A list of concepts to start, one button each.
     const conceptButtons = (list: ConceptInfo[]) =>
       list.map(c => (
@@ -224,18 +234,46 @@ export const register: Register = on => {
         </Box>
       )
     } else if (l.screen === 'complete' && l.concept) {
-      const next = l.picks && l.picks.length > 0 ? l.picks : (l.all ?? [])
+      // A celebration: what was finished, what it opened up, and the next
+      // concept as the one obvious button.
+      const picks = l.picks ?? []
+      const [first, ...rest] = picks
       body = (
         <Box flexDirection="column">
-          <Text bold>
-            {l.known ? `Marked "${l.concept.title}" as known.` : `✓ You finished "${l.concept.title}".`}
-          </Text>
+          {l.known ? (
+            <Text bold color="success">
+              ✓ Marked "{l.concept.title}" as known
+            </Text>
+          ) : (
+            <Text bold color="success">
+              🎉 You finished "{l.concept.title}"!
+            </Text>
+          )}
           {l.unlocked && l.unlocked.length > 0 ? (
-            <Text>Unlocked: {l.unlocked.map(u => u.title).join(', ')}</Text>
+            <Text>🔓 Unlocked: {l.unlocked.map(u => u.title).join(', ')}</Text>
           ) : null}
           <Text> </Text>
-          <Text dimColor>{l.picks && l.picks.length > 0 ? 'Next up:' : 'All caught up. Re-read any:'}</Text>
-          {conceptButtons(next)}
+          {first ? (
+            <Box flexDirection="column">
+              <Button key={`next-${first.id}`} variant="primary" hotkey="n" onPress={act('start', first.id)}>
+                Start: {first.title} ›
+              </Button>
+              <Text dimColor>  {first.summary}</Text>
+              {rest.length > 0 ? (
+                <Box flexDirection="column">
+                  <Text> </Text>
+                  <Text dimColor>Or pick:</Text>
+                  {conceptButtons(rest)}
+                </Box>
+              ) : null}
+            </Box>
+          ) : (
+            <Box flexDirection="column">
+              <Text bold>🏆 You've covered everything so far</Text>
+              <Text dimColor>Re-read any concept:</Text>
+              {conceptButtons(l.all ?? [])}
+            </Box>
+          )}
         </Box>
       )
     } else {
@@ -252,7 +290,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Text bold={v.phase !== 'working'} dimColor={v.phase === 'working'}>
+        <Text bold={v.phase !== 'working'} color={headerColor[v.phase]}>
           {header[v.phase]}
         </Text>
         {l?.notice ? <Text dimColor>{l.notice}</Text> : null}
