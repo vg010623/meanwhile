@@ -19,19 +19,24 @@ enter next · ← back · i I know this · d go deeper · s skip · x Claude's d
 
 ## Install
 
-macOS with Homebrew:
+You need [Claude Code](https://claude.com/claude-code) (a recent version: the panel uses its mod API) on macOS or Linux.
+
+Download the binary for your machine from the [releases page](https://github.com/vg010623/meanwhile/releases) (`darwin_arm64` for Apple silicon Macs, `darwin_amd64` for Intel Macs, `linux_amd64` / `linux_arm64` for Linux) and put it on your PATH. For example, on an Apple silicon Mac:
 
 ```sh
-brew install --cask vg010623/tap/meanwhile
+curl -fsSL https://github.com/vg010623/meanwhile/releases/download/v0.1.0-beta.1/meanwhile_0.1.0-beta.1_darwin_arm64.tar.gz | tar xz meanwhile
+mkdir -p ~/.local/bin && mv meanwhile ~/.local/bin/
 ```
 
-Anywhere with Go 1.27+:
+(Downloading with `curl` avoids macOS's "unidentified developer" block. If you download through a browser instead, run `xattr -d com.apple.quarantine ~/.local/bin/meanwhile` once.)
+
+Or, with Go 1.27+:
 
 ```sh
 go install github.com/vg010623/meanwhile/cmd/meanwhile@latest
 ```
 
-Or download a binary from the [releases page](https://github.com/vg010623/meanwhile/releases).
+Homebrew is coming later.
 
 ## Set up
 
