@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,5 +156,40 @@ func TestStats(t *testing.T) {
 	}
 	if !strings.Contains(te.out.String(), "across 1 waits") {
 		t.Errorf("output:\n%s", te.out)
+	}
+}
+
+func TestLessonCommand(t *testing.T) {
+	te := newTestEnv(t, "")
+	lesson := func(args ...string) map[string]any {
+		t.Helper()
+		te.out.Reset()
+		code := run(append([]string{"lesson"}, args...), te.env)
+		var got map[string]any
+		if err := json.Unmarshal(te.out.Bytes(), &got); err != nil {
+			t.Fatalf("lesson %v: exit %d, not JSON: %q %s", args, code, te.out, te.errOut)
+		}
+		return got
+	}
+
+	if got := lesson("current"); got["screen"] != "picker" {
+		t.Fatalf("fresh start: %v", got)
+	}
+	got := lesson("start", "what-is-a-model")
+	if got["screen"] != "card" {
+		t.Fatalf("start: %v", got)
+	}
+	lesson("next")
+	// Each call is a new process in real use: the saved position must hold.
+	got = lesson("current")
+	card, _ := got["card"].(map[string]any)
+	if card["index"] != float64(1) || got["last_time"] == "" {
+		t.Errorf("resume: %v", got)
+	}
+	if got := lesson("start", "nope"); got["error"] == nil {
+		t.Errorf("unknown concept: %v", got)
+	}
+	if code := run([]string{"lesson", "bogus"}, te.env); code != 2 {
+		t.Errorf("bogus action: exit %d", code)
 	}
 }

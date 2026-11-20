@@ -21,6 +21,7 @@ Usage:
   meanwhile setup                add meanwhile's hooks to Claude Code
   meanwhile uninstall            remove them (--purge also deletes meanwhile's data)
   meanwhile stats                wait time and learning progress
+  meanwhile lesson ACTION        lesson screen as JSON, for the Claude Code panel
   meanwhile doctor               check that everything is wired up
   meanwhile content check        validate curriculum files (--dir DIR for drafts)
   meanwhile simulate EVENT       write a fake Claude event (for development)
@@ -66,6 +67,8 @@ func run(args []string, e env) int {
 		return cmdUninstall(rest, e)
 	case "stats":
 		return cmdStats(rest, e)
+	case "lesson":
+		return cmdLesson(rest, e)
 	case "doctor":
 		return cmdDoctor(rest, e)
 	case "simulate":

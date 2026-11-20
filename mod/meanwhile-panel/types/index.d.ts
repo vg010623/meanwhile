@@ -8,8 +8,44 @@ export type PanelView = {
   endedAt: number // ms since the epoch; 0 while running
 }
 
+// The JSON `meanwhile lesson …` prints (internal/activities/learn/lesson.go).
+export type ConceptInfo = {
+  id: string
+  title: string
+  summary: string
+  cards: number
+  in_progress?: boolean
+  done?: boolean
+}
+
+export type CardInfo = {
+  index: number // 0-based
+  total: number
+  id: string
+  title: string
+  body: string // Markdown
+  recap?: string
+}
+
+export type Lesson = {
+  screen: 'card' | 'picker' | 'complete'
+  concept?: ConceptInfo
+  card?: CardInfo
+  last_time?: string
+  unmet?: ConceptInfo[]
+  known?: boolean
+  unlocked?: ConceptInfo[]
+  picks?: ConceptInfo[]
+  all?: ConceptInfo[]
+  notice?: string
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    'meanwhile-panel': { view: PanelView; card: number }
+    'meanwhile-panel': {
+      view: PanelView
+      lesson: Lesson | null // null until loaded
+      lessonError: string // "" when the last call worked
+    }
   }
 }

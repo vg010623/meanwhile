@@ -1,11 +1,14 @@
-// M7 prototype: a meanwhile lesson panel inside Claude Code's own window.
-// Static text only; the Go app is not called yet. The point is to confirm
-// the events: when a turn starts, when Claude waits on the person, and how
-// a turn ends (answer, Esc, error).
+// The meanwhile lesson panel inside Claude Code's own window.
+//
+// Timing comes from the engine's events: the panel opens after 4 s of work,
+// says when Claude needs the person, and how the turn ended (Esc included).
+// Lessons and progress come from the Go app: each action runs
+// `meanwhile lesson …` and draws the JSON it prints, so progress is saved
+// in the same database the terminal app and `meanwhile stats` use.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { PanelView, Phase } from '../types'
+import type { ConceptInfo, Lesson, PanelView, Phase } from '../types'
 
 const PANE = 'meanwhile'
 const TITLE = 'meanwhile'
@@ -15,14 +18,13 @@ const GRACE_MS = 4000
 
 const idle: PanelView = { phase: 'idle', startedAt: 0, endedAt: 0 }
 const view = atom({ plugin: 'meanwhile-panel', key: 'view' } as const, idle)
-const card = atom({ plugin: 'meanwhile-panel', key: 'card' } as const, 0)
+const lesson = atom({ plugin: 'meanwhile-panel', key: 'lesson' } as const, null as Lesson | null)
+const lessonError = atom({ plugin: 'meanwhile-panel', key: 'lessonError' } as const, '')
 
-// Placeholder cards until the panel reads real lessons from the Go app.
-const CARDS = [
-  { title: 'A function you can\'t read', body: 'PLACEHOLDER card 1. A model is a function from input to output whose rules were learned from examples, not written by a person.' },
-  { title: 'Weights', body: 'PLACEHOLDER card 2. The learned rules live in billions of numbers called weights. Training nudges them until the outputs look right.' },
-  { title: 'Why it matters', body: 'PLACEHOLDER card 3. Because nobody wrote the rules, nobody can read them off either: you learn what a model does by testing it.' },
-]
+// The binary is found on PATH, in ~/go/bin (go install) or Homebrew's bin;
+// MEANWHILE_BIN overrides it.
+const RUN_LESSON =
+  'PATH="$PATH:$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin"; exec "${MEANWHILE_BIN:-meanwhile}" lesson "$@"'
 
 async function setPhase($: EngineInterface, phase: Phase) {
   const now = await $.clock.now()
@@ -33,8 +35,40 @@ async function setPhase($: EngineInterface, phase: Phase) {
   }))
 }
 
+// runLesson runs one lesson action and stores what to draw.
+async function runLesson($: EngineInterface, args: string[]) {
+  let message = ''
+  try {
+    const r = await $.process.run(['/bin/sh', '-c', RUN_LESSON, 'sh', ...args], { timeoutMs: 5000 })
+    const parsed = JSON.parse(r.stdout || 'null') as (Lesson & { error?: string }) | null
+    if (parsed === null) {
+      message = r.stderr.trim() || `meanwhile exited with ${r.exitCode}`
+    } else if (parsed.error) {
+      message = parsed.error
+    } else {
+      await update($, lesson, () => parsed)
+    }
+  } catch (err) {
+    message = `couldn't run meanwhile: ${String(err)}`
+  }
+  await update($, lessonError, () => message)
+}
+
+async function openPanel($: EngineInterface) {
+  await runLesson($, ['current'])
+  await $.ui.open({ id: PANE, title: TITLE })
+}
+
+// plain turns a card's Markdown into paragraphs of plain text.
+function plain(md: string): string[] {
+  return md
+    .split(/\n\s*\n/)
+    .map(p => p.replace(/\*\*|__|`/g, '').replace(/^\s*[-*]\s+/gm, '• ').trim())
+    .filter(p => p !== '')
+}
+
 export const register: Register = on => {
-  // Module state; a reload starts it over, which is fine for a prototype.
+  // Module state; a reload starts it over.
   let turnId = ''
   let timer: { cancel: () => void } | undefined
   let isOpen = false
@@ -54,7 +88,7 @@ export const register: Register = on => {
         if (turnId !== mine) return
         const v = await read($, view)
         if (v.phase === 'working') {
-          await $.ui.open({ id: PANE, title: TITLE })
+          await openPanel($)
           isOpen = true
         } else if (v.phase === 'blocked') {
           wantsOpen = true
@@ -77,8 +111,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // A verdict of "ask" means a permission dialog is about to be shown
-  // (unless the mode's decider settles it; to be checked live).
+  // A verdict of "ask" means a permission dialog is about to be shown.
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     if (verdict.decision === 'ask' && e.tool_use_id && turnId) {
@@ -101,7 +134,7 @@ export const register: Register = on => {
         await setPhase($, 'working')
         if (wantsOpen && !isOpen) {
           wantsOpen = false
-          await $.ui.open({ id: PANE, title: TITLE })
+          await openPanel($)
           isOpen = true
         }
       }
@@ -117,10 +150,10 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const v = await read($, view)
-    const i = await read($, card)
+    const l = await read($, lesson)
+    const failed = await read($, lessonError)
+    const act = (...args: string[]) => () => runLesson($, args)
     const close = () => $.ui.close({ id: PANE })
-    const back = () => update($, card, n => Math.max(n - 1, 0))
-    const forward = () => update($, card, n => Math.min(n + 1, CARDS.length - 1))
 
     const header: Record<Phase, string> = {
       idle: 'Lesson time · no Claude run in progress',
@@ -131,35 +164,111 @@ export const register: Register = on => {
       error: '✖ Claude stopped with an error',
     }
 
+    // A list of concepts to start, one button each.
+    const conceptButtons = (list: ConceptInfo[]) =>
+      list.map(c => (
+        <Box key={`c-${c.id}`} flexDirection="column">
+          <Button key={`start-${c.id}`} onPress={act('start', c.id)}>
+            {c.done ? '✓ ' : ''}
+            {c.title}
+            {c.in_progress ? ' (in progress)' : ''}
+          </Button>
+          <Text dimColor>  {c.summary}</Text>
+        </Box>
+      ))
+
+    let body
+    if (v.phase === 'blocked') {
+      body = <Text>Switch to Claude. Your card will be here when you get back.</Text>
+    } else if (failed !== '') {
+      body = (
+        <Box flexDirection="column">
+          <Text bold>Couldn't load your lesson</Text>
+          <Text dimColor>{failed}</Text>
+          <Text dimColor>Is meanwhile installed? Try `meanwhile lesson current` in a terminal.</Text>
+        </Box>
+      )
+    } else if (l === null) {
+      body = <Text dimColor>Loading your lesson…</Text>
+    } else if (l.screen === 'card' && l.concept && l.card) {
+      const last = l.card.index === l.card.total - 1
+      body = (
+        <Box flexDirection="column">
+          <Text dimColor>
+            {l.concept.title} · card {l.card.index + 1} of {l.card.total}
+          </Text>
+          {l.last_time ? <Text dimColor>Last time: {l.last_time}</Text> : null}
+          {l.unmet && l.unmet.length > 0 ? (
+            <Text dimColor>Builds on {l.unmet.map(u => u.title).join(', ')} (not done yet)</Text>
+          ) : null}
+          <Text> </Text>
+          <Text bold>{l.card.title}</Text>
+          <Text> </Text>
+          {plain(l.card.body).map((p, i) => (
+            <Box key={`p-${i}`} flexDirection="column">
+              <Text>{p}</Text>
+              <Text> </Text>
+            </Box>
+          ))}
+          <Box flexDirection="row" gap={2}>
+            <Button hotkey="b" dimColor={l.card.index === 0} onPress={act('back')}>
+              ‹ Back
+            </Button>
+            <Button variant="primary" hotkey="n" onPress={act('next')}>
+              {last ? 'Finish ✓' : 'Next ›'}
+            </Button>
+            <Button hotkey="k" dimColor onPress={act('known')}>
+              I know this
+            </Button>
+          </Box>
+        </Box>
+      )
+    } else if (l.screen === 'complete' && l.concept) {
+      const next = l.picks && l.picks.length > 0 ? l.picks : (l.all ?? [])
+      body = (
+        <Box flexDirection="column">
+          <Text bold>
+            {l.known ? `Marked "${l.concept.title}" as known.` : `✓ You finished "${l.concept.title}".`}
+          </Text>
+          {l.unlocked && l.unlocked.length > 0 ? (
+            <Text>Unlocked: {l.unlocked.map(u => u.title).join(', ')}</Text>
+          ) : null}
+          <Text> </Text>
+          <Text dimColor>{l.picks && l.picks.length > 0 ? 'Next up:' : 'All caught up. Re-read any:'}</Text>
+          {conceptButtons(next)}
+        </Box>
+      )
+    } else {
+      const picks = l.picks ?? []
+      body = (
+        <Box flexDirection="column">
+          <Text bold>{picks.length > 0 ? 'Ready for you' : "You've covered everything that's ready"}</Text>
+          {picks.length === 0 ? <Text dimColor>Re-read any concept:</Text> : null}
+          <Text> </Text>
+          {conceptButtons(picks.length > 0 ? picks : (l.all ?? []))}
+        </Box>
+      )
+    }
+
     return (
       <Box flexDirection="column">
         <Text bold={v.phase !== 'working'} dimColor={v.phase === 'working'}>
           {header[v.phase]}
         </Text>
+        {l?.notice ? <Text dimColor>{l.notice}</Text> : null}
         <Text> </Text>
-        {v.phase === 'blocked' ? (
-          <Text>Switch to Claude. Your card will be here when you get back.</Text>
-        ) : (
-          <Box flexDirection="column">
-            <Text dimColor>What is a model · card {i + 1} of {CARDS.length}</Text>
-            <Text bold>{CARDS[i].title}</Text>
-            <Text> </Text>
-            <Text>{CARDS[i].body}</Text>
-          </Box>
-        )}
+        {body}
         <Text> </Text>
         <Box flexDirection="row" gap={2}>
-          <Button hotkey="b" dimColor={i === 0} onPress={back}>
-            ‹ Back
-          </Button>
-          <Button variant="primary" hotkey="n" autoFocus onPress={forward}>
-            Next ›
-          </Button>
+          {l?.screen !== 'picker' ? (
+            <Button hotkey="p" dimColor onPress={act('pick')}>
+              Pick another
+            </Button>
+          ) : null}
           <Button role="dismiss" hotkey="x" onPress={close}>
             ✕ Close
           </Button>
         </Box>
-        <Text dimColor>Click a button, or ctrl+x tab to focus here, then n / b / x. Esc returns to the prompt.</Text>
       </Box>
     )
   })
