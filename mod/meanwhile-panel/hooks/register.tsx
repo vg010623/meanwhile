@@ -38,6 +38,16 @@ const deeper = atom({ plugin: 'meanwhile-panel', key: 'deeper' } as const, noDee
 // When the window is too narrow for the side panel to open by itself, a
 // slim strip above the prompt offers the lesson instead.
 const band = atom({ plugin: 'meanwhile-panel', key: 'band' } as const, false)
+// Whether the panel opens by itself while Claude works. The person's choice,
+// kept across sessions in $.store; /meanwhile still opens it either way.
+const autoOpen = atom({ plugin: 'meanwhile-panel', key: 'autoOpen' } as const, true)
+const AUTO_OPEN = 'autoOpen'
+
+async function setAutoOpen($: EngineInterface, on: boolean) {
+  await $.store.set(AUTO_OPEN, on)
+  await update($, autoOpen, () => on)
+  if (!on) await update($, band, () => false)
+}
 
 // $.store key (kept across sessions): the model the person chose on the
 // Go deeper consent screen. Unset means they haven't agreed yet.
@@ -236,7 +246,7 @@ async function unblock($: EngineInterface) {
   const v = await read($, view)
   if (v.phase !== 'blocked') return
   await setPhase($, 'working')
-  if (wantsOpen && !isOpen) {
+  if (wantsOpen && !isOpen && (await read($, autoOpen))) {
     wantsOpen = false
     await openPanel($)
     isOpen = true
@@ -250,12 +260,24 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'meanwhile',
-      description: 'Open the meanwhile lesson panel',
+      description: 'Open the meanwhile lesson panel (on / off: whether it opens by itself)',
+      argumentHint: '[on|off]',
     })
+    const stored = await $.store.get(AUTO_OPEN)
+    await update($, autoOpen, () => stored !== false) // on unless turned off
     return next(e)
   })
 
-  on('command.run', { command: 'meanwhile' }, async $ => {
+  on('command.run', { command: 'meanwhile' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg === 'off') {
+      await setAutoOpen($, false)
+      return { text: "meanwhile won't open by itself any more. Type /meanwhile to open it, or /meanwhile on to switch it back." }
+    }
+    if (arg === 'on') {
+      await setAutoOpen($, true)
+      return { text: 'meanwhile will open by itself when Claude works for more than a few seconds.' }
+    }
     const v = await read($, view)
     if (v.phase !== 'working' && v.phase !== 'blocked') {
       await update($, view, () => idle) // no run in progress: plain lesson time
@@ -277,6 +299,7 @@ export const register: Register = on => {
       void (async () => {
         if (turnId !== mine) return
         const v = await read($, view)
+        if (!(await read($, autoOpen))) return // the person turned it off
         if (v.phase === 'working') {
           await openPanel($)
           isOpen = true
@@ -365,6 +388,7 @@ export const register: Register = on => {
     const l = await read($, lesson)
     const failed = await read($, lessonError)
     const d = await read($, deeper)
+    const auto = await read($, autoOpen)
     const act = (...args: string[]) => () => runLesson($, args)
     const close = () => $.ui.close({ id: PANE })
     // Seated in the short box above the prompt (a narrow window): status and
@@ -651,6 +675,9 @@ export const register: Register = on => {
             Pick another
           </Button>
         ) : null}
+        <Button key="auto-open" dimColor onPress={() => setAutoOpen($, !auto)}>
+          {auto ? 'Auto-open: On' : 'Auto-open: Off'}
+        </Button>
         <Button role="dismiss" hotkey="x" onPress={close}>
           ✕ Close
         </Button>

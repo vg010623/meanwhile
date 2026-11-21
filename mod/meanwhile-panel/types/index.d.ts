@@ -73,6 +73,7 @@ declare module 'claude-code' {
       lessonError: string // "" when the last call worked
       deeper: DeeperView
       band: boolean // the side panel couldn't be placed: show the strip above the prompt
+      autoOpen: boolean // open by itself after 4 s of work (mirrors $.store 'autoOpen')
     }
   }
 }

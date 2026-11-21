@@ -46,7 +46,7 @@ meanwhile setup      # adds a few hooks to ~/.claude/settings.json (shows the ch
 
 `setup` keeps your existing hooks and settings, saves a backup of the old file, and shows exactly what it will add before writing anything. Then it asks where you want your lessons:
 
-1. **Inside Claude Code**: a panel next to the chat. `setup` installs it with `claude plugin install meanwhile-panel --marketplace vg010623/meanwhile`. It opens by itself when Claude works for more than a few seconds; type `/meanwhile` in Claude Code to open it any time (for example after closing it). It docks beside the chat on wide terminals (about 144 columns or more when it opens by itself).
+1. **Inside Claude Code**: a panel next to the chat. `setup` installs it with `claude plugin install meanwhile-panel --marketplace vg010623/meanwhile`. It opens by itself when Claude works for more than a few seconds; type `/meanwhile` in Claude Code to open it any time (for example after closing it). Don't want it popping up? `/meanwhile off` (or the **Auto-open** button in the panel) stops it opening by itself; `/meanwhile on` brings it back. It docks beside the chat on wide terminals (about 144 columns or more when it opens by itself).
 2. **In a separate terminal tab**: run `meanwhile` in a split pane or a second tab.
 3. **Both** (the default). Your progress is shared, so you can switch between them freely.
 
