@@ -59,10 +59,11 @@ Checked with the prototype `mod/meanwhile-panel`, loaded by hot reload into an i
 - **AskUserQuestion:** `tool.call` with `tool === 'AskUserQuestion'` blocks until the person answers, and the panel showed "needs your input" for the whole time.
 - **Buttons respond to a mouse click** (`onPress`), and the panel redraws with the new state.
 - **Not working:** focusing the panel with **ctrl+x then tab**, to use the `hotkey` letters (n/b/x), did nothing for the owner. Clicking works, so it isn't blocking. Still to investigate: the focus chord on this build, or `open({ focus: true })`.
+- **Narrow windows** (verified 21 Nov 2026): a panel opened unasked in a narrow terminal returns `isPlaced: false` and stays undrawn. A strip in `AbovePrompt` ("📖 meanwhile · … [Read] [Later]") shows fine there. Pressing **Read** (close, then `$.ui.open`) seats the panel at any width, in a short box above the prompt (`e.props.placement === 'inline'`) that **scrolls** with the mouse or trackpad. `open({ rows })` asks for a taller box, but the layout decides. **`e.viewport.rows` is the whole terminal's height, not the panel's**, so use `placement` to choose a compact layout.
 - **Hot reload:** a mod in a session's `~/.claude/dev-mods/<session-id>/` folder doesn't come back after the session restarts or forks (the id changes). Reload the `plugin-authoring` skill and copy the mod into the new folder, or start with `claude --plugin-dir mod/meanwhile-panel`.
 
 ## Not yet verified
 
 - `StopFailure` payload: documented as carrying `error_type`. We read `error_type` and fall back to `error`.
 - Mod: whether a `classic.PermissionRequest` hook's `next(e)` waits for the person's answer. If it does, the panel could resume the moment Allow is clicked, instead of when the command ends.
-- Mod: how a panel opened while the window is under 144 columns behaves (it is documented to wait undrawn).
+
