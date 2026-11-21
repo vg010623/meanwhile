@@ -146,6 +146,10 @@ go build -o /tmp/mw ./cmd/meanwhile
 
 The architecture, from hooks to activities, is described in [docs/plan.md](docs/plan.md). Behaviour verified against real Claude Code is in [docs/claude-code-behaviour.md](docs/claude-code-behaviour.md).
 
+## A small demo video
+
+https://github.com/user-attachments/assets/7c27ddfe-a31d-4a51-af38-7c7d4c24a5c6
+
 ## License
 
 Code: [MIT](LICENSE). Lesson content: [CC BY 4.0](content/LICENSE).
