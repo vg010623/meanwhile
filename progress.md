@@ -87,6 +87,14 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 5. **Homebrew:** create the repo `vg010623/homebrew-tap` and add a repo secret `HOMEBREW_TAP_GITHUB_TOKEN` (a token with contents:write on the tap).
 6. **Release:** `git tag v0.1.0 && git push --tags`.
 
+## Feedback outreach (started 21 Nov 2026)
+
+- 40 people who build or write about Claude Code tooling were found by a research agent (public sources only; every email checked as published by the person). The list is in the owner's `~/Downloads/meanwhile-feedback-contacts.csv`.
+- **Email:** 34 people, sent with YAMM (Gmail mail merge) from `~/Downloads/meanwhile-mailmerge.csv`, all getting the same email (asks: would you keep it open; general lessons vs. lessons tied to what Claude is doing). On 21 Nov, 20 were sent (1 bounced: Anno, `aannoo@anno.website`). **The remaining 14 go out the next day** from the same sheet, which keeps a "Merge status" column so nobody gets it twice.
+- **LinkedIn / X:** 6 people (rows 17, 27, 31, 32, 34, 36), plus a LinkedIn post with the demo video.
+- The demo video is at the top of the README. Follow up once, after about a week, with anyone who didn't reply.
+- **Use the replies to decide the next step:** more lessons, or lessons tied to what Claude is doing right now.
+
 ## Beta curriculum (agreed 21 Nov 2026)
 
 Drafts come from an AI agent; the owner reviews every card before it ships. Format: `docs/content-format.md`.
