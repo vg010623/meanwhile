@@ -4,18 +4,9 @@ Learn AI fundamentals in the seconds and minutes you spend waiting on Claude Cod
 
 When you give Claude Code a prompt, you wait. Most of us reach for our phone, and then come back late with the thread lost. `meanwhile` shows lessons right next to Claude: in a panel inside Claude Code's own window, in a split pane beside it, or both (you choose at setup). It stays quiet until Claude starts working, then shows a short lesson card, readable in 20 to 40 seconds, about how AI actually works: models, tokens, embeddings, attention, context windows, agents. When Claude finishes or needs you, it says so clearly, and you go back to work on time.
 
-```
-● Claude is working · 0m 41s · my-app
+https://github.com/user-attachments/assets/7c27ddfe-a31d-4a51-af38-7c7d4c24a5c6
 
-Tokens · card 2 of 4
-
-Why not whole words?
-
-A vocabulary of every word would be huge and would still miss new
-ones. Tokens split text into common pieces instead…
-
-enter next · ← back · i I know this · d go deeper · s skip · x Claude's done · q quit
-```
+*The lesson panel opening beside Claude Code while it works.*
 
 ## Install
 
@@ -145,10 +136,6 @@ go build -o /tmp/mw ./cmd/meanwhile
 ```
 
 The architecture, from hooks to activities, is described in [docs/plan.md](docs/plan.md). Behaviour verified against real Claude Code is in [docs/claude-code-behaviour.md](docs/claude-code-behaviour.md).
-
-## A small demo video
-
-https://github.com/user-attachments/assets/7c27ddfe-a31d-4a51-af38-7c7d4c24a5c6
 
 ## License
 
