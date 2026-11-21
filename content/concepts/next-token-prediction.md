@@ -17,7 +17,7 @@ Because each step depends on the previous output, early choices heavily steer th
 > Recap: Models generate code sequentially, one token at a time, conditioning each guess on everything prior.
 
 ## No backspace key {#no-backspace-key}
-Once a model emits a token, it cannot silently delete it and start over. If it starts writing a nested `for` loop when a hash map would have been cleaner, it has to finish that loop coherently.
+Once a model emits a token in its answer, it cannot silently delete it and start over (it can rethink only in its private thinking, before the answer starts). If it starts writing a nested `for` loop when a hash map would have been cleaner, it has to finish that loop coherently.
 
 The model is trained to make the upcoming text look like a natural continuation of whatever already exists. That means it will often write convoluted glue code just to justify a shaky assumption it made three lines earlier.
 

@@ -8,7 +8,7 @@ order: 90
 ---
 
 ## Plausible beats true {#plausible-beats-true}
-A model's only job is to predict the most likely next token. It has no internal database of facts and no boolean flag that flips to `false` when it does not know an answer.
+A model's only job is to predict the most likely next token. Its weights hold a lot of knowledge, but it has no fact table it can check its answer against, and no boolean flag that flips to `false` when it does not know.
 
 If you ask for a CLI flag to export logs in a specific tool, the model sees patterns like `--export-format` or `--output-json` across thousands of other tools. Predicting a flag that *looks* right is statistically natural, even if that tool never implemented it.
 
