@@ -16,11 +16,9 @@ const TITLE = 'meanwhile'
 // Grace delay: a quick answer never opens the panel.
 const GRACE_MS = 4000
 
-// In a narrow window the panel sits above the prompt in a short box. It asks
-// for this many rows (a request: the layout may give fewer), and below
-// COMPACT_ROWS it puts the status and the buttons first.
+// In a narrow window the panel sits above the prompt in a short box; it asks
+// for this many rows (a request: the layout may give fewer).
 const PANE_ROWS = 20
-const COMPACT_ROWS = 14
 
 const idle: PanelView = { phase: 'idle', startedAt: 0, endedAt: 0 }
 const view = atom({ plugin: 'meanwhile-panel', key: 'view' } as const, idle)
@@ -369,8 +367,10 @@ export const register: Register = on => {
     const d = await read($, deeper)
     const act = (...args: string[]) => () => runLesson($, args)
     const close = () => $.ui.close({ id: PANE })
-    // Too short to scroll through: status and buttons first, then the text.
-    const compact = (e.viewport?.rows ?? 40) < COMPACT_ROWS
+    // Seated in the short box above the prompt (a narrow window): status and
+    // buttons first, then the text. (e.viewport.rows is the whole terminal's
+    // height, not the box's, so it can't tell.)
+    const compact = e.props.placement === 'inline'
 
     const header: Record<Phase, string> = {
       idle: 'Lesson time · no Claude run in progress',
