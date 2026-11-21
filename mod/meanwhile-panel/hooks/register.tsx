@@ -16,6 +16,12 @@ const TITLE = 'meanwhile'
 // Grace delay: a quick answer never opens the panel.
 const GRACE_MS = 4000
 
+// In a narrow window the panel sits above the prompt in a short box. It asks
+// for this many rows (a request: the layout may give fewer), and below
+// COMPACT_ROWS it puts the status and the buttons first.
+const PANE_ROWS = 20
+const COMPACT_ROWS = 14
+
 const idle: PanelView = { phase: 'idle', startedAt: 0, endedAt: 0 }
 const view = atom({ plugin: 'meanwhile-panel', key: 'view' } as const, idle)
 const lesson = atom({ plugin: 'meanwhile-panel', key: 'lesson' } as const, null as Lesson | null)
@@ -31,6 +37,9 @@ const FIRST_QUESTION = 'Explain this card more deeply.'
 // One-click follow-ups, so nobody has to type.
 const SUGGESTIONS = ['Give me an example', 'Explain it more simply', 'How does this affect my work with Claude Code?']
 const deeper = atom({ plugin: 'meanwhile-panel', key: 'deeper' } as const, noDeeper)
+// When the window is too narrow for the side panel to open by itself, a
+// slim strip above the prompt offers the lesson instead.
+const band = atom({ plugin: 'meanwhile-panel', key: 'band' } as const, false)
 
 // $.store key (kept across sessions): the model the person chose on the
 // Go deeper consent screen. Unset means they haven't agreed yet.
@@ -186,9 +195,23 @@ async function closeDeeper($: EngineInterface) {
   await update($, deeper, () => noDeeper)
 }
 
+// openPanel loads the lesson and opens the side panel. Opened by itself
+// (not asked for), a panel only seats in a wide window; otherwise the
+// strip above the prompt offers it.
 async function openPanel($: EngineInterface) {
   await runLesson($, ['current'])
-  await $.ui.open({ id: PANE, title: TITLE })
+  const opened = await $.ui.open({ id: PANE, title: TITLE, rows: PANE_ROWS })
+  await update($, band, () => !opened.isPlaced)
+}
+
+// readFromBand opens the panel because the person asked, which seats it at
+// any width. The unseated panel is closed first so the new open is the
+// person's own.
+async function readFromBand($: EngineInterface) {
+  await update($, band, () => false)
+  await $.ui.close({ id: PANE })
+  await $.ui.open({ id: PANE, title: TITLE, rows: PANE_ROWS })
+  isOpen = true
 }
 
 // plain turns a card's Markdown into paragraphs of plain text.
@@ -272,6 +295,7 @@ export const register: Register = on => {
     timer?.cancel()
     timer = undefined
     blockedBy = ''
+    await update($, band, () => false) // the strip is only for while Claude works
     if (isOpen) {
       await setPhase($, e.reason === 'answer' ? 'finished' : e.reason === 'aborted' ? 'stopped' : 'error')
     } else {
@@ -313,6 +337,30 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The strip above the prompt, for windows too narrow for the side panel.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey || !(await read($, band))) return next(e)
+    const l = await read($, lesson)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const teaser =
+      l?.screen === 'card' && l.concept && l.card
+        ? `${l.concept.title} ${l.card.index + 1}/${l.card.total}: ${l.card.title}`
+        : 'a lesson is ready'
+    return (
+      <Box flexDirection="row" gap={2}>
+        <Text dimColor wrap="truncate-end">
+          📖 meanwhile · {teaser}
+        </Text>
+        <Button key="band-read" onPress={() => readFromBand($)}>
+          Read
+        </Button>
+        <Button key="band-later" dimColor onPress={() => update($, band, () => false)}>
+          Later
+        </Button>
+      </Box>
+    )
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Input } = $.ui.resolve(e)
     const v = await read($, view)
@@ -321,6 +369,8 @@ export const register: Register = on => {
     const d = await read($, deeper)
     const act = (...args: string[]) => () => runLesson($, args)
     const close = () => $.ui.close({ id: PANE })
+    // Too short to scroll through: status and buttons first, then the text.
+    const compact = (e.viewport?.rows ?? 40) < COMPACT_ROWS
 
     const header: Record<Phase, string> = {
       idle: 'Lesson time · no Claude run in progress',
@@ -350,7 +400,7 @@ export const register: Register = on => {
             {c.title}
             {c.in_progress ? ' (in progress)' : ''}
           </Button>
-          <Text dimColor>  {c.summary}</Text>
+          {compact ? null : <Text dimColor>  {c.summary}</Text>}
         </Box>
       ))
 
@@ -489,7 +539,41 @@ export const register: Register = on => {
       }
     } else if (l.screen === 'card' && l.concept && l.card) {
       const last = l.card.index === l.card.total - 1
-      body = (
+      const cardButtons = (
+        <Box flexDirection="row" gap={2}>
+          <Button hotkey="b" dimColor={l.card.index === 0} onPress={act('back')}>
+            ‹ Back
+          </Button>
+          <Button variant="primary" hotkey="n" onPress={act('next')}>
+            {last ? 'Finish ✓' : 'Next ›'}
+          </Button>
+          <Button hotkey="k" dimColor onPress={act('known')}>
+            I know this
+          </Button>
+          <Button hotkey="d" onPress={() => openDeeper($)}>
+            {l.card.has_deeper ? '📖 Your explanation' : 'Go deeper'}
+          </Button>
+        </Box>
+      )
+      const text = plain(l.card.body).map((p, i) => (
+        <Box key={`p-${i}`} flexDirection="column">
+          <Text>{p}</Text>
+          {compact ? null : <Text> </Text>}
+        </Box>
+      ))
+      body = compact ? (
+        <Box flexDirection="column">
+          <Text wrap="truncate-end">
+            <Text bold>{l.card.title}</Text>
+            <Text dimColor>
+              {' '}
+              · {l.concept.title} {l.card.index + 1}/{l.card.total}
+            </Text>
+          </Text>
+          {cardButtons}
+          {text}
+        </Box>
+      ) : (
         <Box flexDirection="column">
           <Text dimColor>
             {l.concept.title} · card {l.card.index + 1} of {l.card.total}
@@ -501,26 +585,8 @@ export const register: Register = on => {
           <Text> </Text>
           <Text bold>{l.card.title}</Text>
           <Text> </Text>
-          {plain(l.card.body).map((p, i) => (
-            <Box key={`p-${i}`} flexDirection="column">
-              <Text>{p}</Text>
-              <Text> </Text>
-            </Box>
-          ))}
-          <Box flexDirection="row" gap={2}>
-            <Button hotkey="b" dimColor={l.card.index === 0} onPress={act('back')}>
-              ‹ Back
-            </Button>
-            <Button variant="primary" hotkey="n" onPress={act('next')}>
-              {last ? 'Finish ✓' : 'Next ›'}
-            </Button>
-            <Button hotkey="k" dimColor onPress={act('known')}>
-              I know this
-            </Button>
-            <Button hotkey="d" onPress={() => openDeeper($)}>
-              {l.card.has_deeper ? '📖 Your explanation' : 'Go deeper'}
-            </Button>
-          </Box>
+          {text}
+          {cardButtons}
         </Box>
       )
     } else if (l.screen === 'complete' && l.concept) {
@@ -578,25 +644,43 @@ export const register: Register = on => {
       )
     }
 
+    const nav = (
+      <Box flexDirection="row" gap={2}>
+        {l?.screen !== 'picker' ? (
+          <Button hotkey="p" dimColor onPress={act('pick')}>
+            Pick another
+          </Button>
+        ) : null}
+        <Button role="dismiss" hotkey="x" onPress={close}>
+          ✕ Close
+        </Button>
+      </Box>
+    )
+    const status = (
+      <Text bold={v.phase !== 'working'} color={headerColor[v.phase]}>
+        {header[v.phase]}
+      </Text>
+    )
+
+    if (compact) {
+      return (
+        <Box flexDirection="column">
+          <Box flexDirection="row" gap={2}>
+            {status}
+            {nav}
+          </Box>
+          {body}
+        </Box>
+      )
+    }
     return (
       <Box flexDirection="column">
-        <Text bold={v.phase !== 'working'} color={headerColor[v.phase]}>
-          {header[v.phase]}
-        </Text>
+        {status}
         {l?.notice ? <Text dimColor>{l.notice}</Text> : null}
         <Text> </Text>
         {body}
         <Text> </Text>
-        <Box flexDirection="row" gap={2}>
-          {l?.screen !== 'picker' ? (
-            <Button hotkey="p" dimColor onPress={act('pick')}>
-              Pick another
-            </Button>
-          ) : null}
-          <Button role="dismiss" hotkey="x" onPress={close}>
-            ✕ Close
-          </Button>
-        </Box>
+        {nav}
       </Box>
     )
   })

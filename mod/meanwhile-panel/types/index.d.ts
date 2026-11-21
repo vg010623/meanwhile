@@ -72,6 +72,7 @@ declare module 'claude-code' {
       lesson: Lesson | null // null until loaded
       lessonError: string // "" when the last call worked
       deeper: DeeperView
+      band: boolean // the side panel couldn't be placed: show the strip above the prompt
     }
   }
 }
