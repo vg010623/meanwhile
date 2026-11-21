@@ -25,7 +25,7 @@ func newClaudeDeeper(ctx activity.Context) Deeper {
 }
 
 // maxFollowUps is how many follow-up questions one thread allows.
-const maxFollowUps = 2
+const maxFollowUps = 3
 
 const (
 	kvNamespace = "learn"

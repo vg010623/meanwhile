@@ -59,6 +59,8 @@ type CardInfo struct {
 	Title string `json:"title"`
 	Body  string `json:"body"`
 	Recap string `json:"recap,omitempty"`
+	// HasDeeper is true when a "Go deeper" explanation of this card is saved.
+	HasDeeper bool `json:"has_deeper,omitempty"`
 }
 
 // pickCount is how many concepts the picker offers.
@@ -236,11 +238,16 @@ func (a *Activity) cardLesson(c *curriculum.Concept, idx int) (Lesson, error) {
 	}
 	card := c.Cards[idx]
 	info := conceptInfo(c, prog)
+	var saved int
+	if err := a.ctx.DB.QueryRow(`SELECT COUNT(*) FROM learn_deep_dives WHERE concept_id = ? AND card_id = ? AND parent_id IS NULL`, c.ID, card.ID).Scan(&saved); err != nil {
+		return Lesson{}, err
+	}
 	return Lesson{
 		Screen:  ScreenCard,
 		Concept: &info,
-		Card:    &CardInfo{Index: idx, Total: len(c.Cards), ID: card.ID, Title: card.Title, Body: card.Body, Recap: card.Recap},
-		Notice:  a.notice,
+		Card: &CardInfo{Index: idx, Total: len(c.Cards), ID: card.ID, Title: card.Title, Body: card.Body, Recap: card.Recap,
+			HasDeeper: saved > 0},
+		Notice: a.notice,
 	}, nil
 }
 

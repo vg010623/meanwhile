@@ -8,7 +8,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ConceptInfo, DeeperView, Lesson, PanelView, Phase } from '../types'
+import type { ConceptInfo, DeepTurn, DeeperView, Lesson, PanelView, Phase } from '../types'
 
 const PANE = 'meanwhile'
 const TITLE = 'meanwhile'
@@ -20,7 +20,16 @@ const idle: PanelView = { phase: 'idle', startedAt: 0, endedAt: 0 }
 const view = atom({ plugin: 'meanwhile-panel', key: 'view' } as const, idle)
 const lesson = atom({ plugin: 'meanwhile-panel', key: 'lesson' } as const, null as Lesson | null)
 const lessonError = atom({ plugin: 'meanwhile-panel', key: 'lessonError' } as const, '')
-const noDeeper: DeeperView = { status: 'idle', cardId: '', model: '', text: '', error: '', tokens: 0 }
+const noDeeper: DeeperView = {
+  status: 'idle', conceptId: '', cardId: '', model: '', rootId: 0, turns: [],
+  maxFollowUps: 3, pending: '', error: '', note: '',
+}
+
+// The first question of every explanation.
+const FIRST_QUESTION = 'Explain this card more deeply.'
+
+// One-click follow-ups, so nobody has to type.
+const SUGGESTIONS = ['Give me an example', 'Explain it more simply', 'How does this affect my work with Claude Code?']
 const deeper = atom({ plugin: 'meanwhile-panel', key: 'deeper' } as const, noDeeper)
 
 // $.store key (kept across sessions): the model the person chose on the
@@ -46,6 +55,20 @@ let deeperAbort: AbortController | undefined
 const RUN_LESSON =
   'PATH="$PATH:$HOME/.local/bin:$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin"; exec "${MEANWHILE_BIN:-meanwhile}" lesson "$@"'
 
+// runMeanwhile runs `meanwhile lesson <args>` and parses its JSON, or says
+// what went wrong.
+async function runMeanwhile($: EngineInterface, args: string[], stdin?: string): Promise<{ data?: unknown; error?: string }> {
+  try {
+    const r = await $.process.run(['/bin/sh', '-c', RUN_LESSON, 'sh', ...args], { timeoutMs: 5000, stdin })
+    const parsed = JSON.parse(r.stdout || 'null') as ({ error?: string } & Record<string, unknown>) | null
+    if (parsed === null) return { error: r.stderr.trim() || `meanwhile exited with ${r.exitCode}` }
+    if (typeof parsed.error === 'string') return { error: parsed.error }
+    return { data: parsed }
+  } catch (err) {
+    return { error: `couldn't run meanwhile: ${String(err)}` }
+  }
+}
+
 async function setPhase($: EngineInterface, phase: Phase) {
   const now = await $.clock.now()
   await update($, view, v => ({
@@ -58,72 +81,103 @@ async function setPhase($: EngineInterface, phase: Phase) {
 // runLesson runs one lesson action and stores what to draw.
 async function runLesson($: EngineInterface, args: string[]) {
   await closeDeeper($) // a new screen: any explanation belonged to the old one
-  let message = ''
-  try {
-    const r = await $.process.run(['/bin/sh', '-c', RUN_LESSON, 'sh', ...args], { timeoutMs: 5000 })
-    const parsed = JSON.parse(r.stdout || 'null') as (Lesson & { error?: string }) | null
-    if (parsed === null) {
-      message = r.stderr.trim() || `meanwhile exited with ${r.exitCode}`
-    } else if (parsed.error) {
-      message = parsed.error
-    } else {
-      await update($, lesson, () => parsed)
-    }
-  } catch (err) {
-    message = `couldn't run meanwhile: ${String(err)}`
-  }
-  await update($, lessonError, () => message)
+  const r = await runMeanwhile($, args)
+  if (r.data) await update($, lesson, () => r.data as Lesson)
+  await update($, lessonError, () => r.error ?? '')
 }
 
-// openDeeper asks for consent the first time, then explains the card.
+// openDeeper shows the card's saved explanation if there is one (no model
+// call), else asks for consent the first time and then asks Claude.
 async function openDeeper($: EngineInterface) {
-  const model = await $.store.get(DEEPER_MODEL)
-  if (typeof model !== 'string' || model === '') {
-    await update($, deeper, () => ({ ...noDeeper, status: 'consent' }))
-    return
-  }
-  await askDeeper($, model)
-}
-
-async function chooseDeeperModel($: EngineInterface, model: string) {
-  await $.store.set(DEEPER_MODEL, model)
-  await askDeeper($, model)
-}
-
-// askDeeper makes one model call through the person's own Claude session:
-// no tools, no files, only the card's text.
-async function askDeeper($: EngineInterface, model: string) {
   const l = await read($, lesson)
   if (!l || !l.concept || !l.card) return
+  const conceptId = l.concept.id
+  const cardId = l.card.id
+  await update($, deeper, () => ({ ...noDeeper, status: 'loading', conceptId, cardId }))
+  const saved = await runMeanwhile($, ['deeper', conceptId, cardId])
+  const thread = saved.data as { root_id: number; turns: DeepTurn[]; max_follow_ups: number } | undefined
+  const stored = await $.store.get(DEEPER_MODEL)
+  const model = typeof stored === 'string' ? stored : ''
+  const base = { ...noDeeper, conceptId, cardId, model, maxFollowUps: thread?.max_follow_ups ?? 3 }
+  if (thread && thread.turns.length > 0) {
+    await update($, deeper, () => ({ ...base, status: 'done', rootId: thread.root_id, turns: thread.turns }))
+    return
+  }
+  if (model === '') {
+    await update($, deeper, () => ({ ...base, status: 'consent' }))
+    return
+  }
+  await update($, deeper, () => base)
+  await askDeeper($, FIRST_QUESTION, true)
+}
+
+// chooseDeeperModel saves the consent; with nothing asked yet it asks.
+async function chooseDeeperModel($: EngineInterface, model: string) {
+  await $.store.set(DEEPER_MODEL, model)
+  const d = await read($, deeper)
+  await update($, deeper, () => ({ ...d, model, status: d.turns.length > 0 ? 'done' : d.status }))
+  if (d.turns.length === 0) await askDeeper($, FIRST_QUESTION, true)
+}
+
+// askDeeper asks one question through the person's own Claude session (no
+// tools, no files: only the card and the conversation so far) and saves the
+// answer. fresh starts a new thread ("Ask again").
+async function askDeeper($: EngineInterface, question: string, fresh: boolean) {
+  const l = await read($, lesson)
+  const d = await read($, deeper)
+  if (!l || !l.concept || !l.card || d.model === '') return
+  const q = question.trim()
+  if (q === '') return
   deeperAbort?.abort()
   const abort = new AbortController()
   deeperAbort = abort
-  const cardId = l.card.id
-  await update($, deeper, () => ({ ...noDeeper, status: 'asking', cardId, model }))
-  const prompt = `Concept: ${l.concept.title}. ${l.concept.summary}
+  const turns = fresh ? [] : d.turns
+  const rootId = fresh ? 0 : d.rootId
+  await update($, deeper, () => ({ ...d, status: 'asking', turns, rootId, pending: q, error: '', note: '' }))
+
+  let prompt = `Concept: ${l.concept.title}. ${l.concept.summary}
 
 The card the learner is reading, "${l.card.title}":
 ${l.card.body}
+`
+  if (turns.length > 0) {
+    prompt += '\nEarlier in this conversation:\n' + turns.map(t => `Learner: ${t.question}\nYou: ${t.answer}`).join('\n') + '\n'
+  }
+  prompt += `\nLearner: ${q}`
 
-Learner: Explain this card more deeply.`
-  let result: DeeperView
+  let next: DeeperView
   try {
-    const r = await $.model.complete({ model, system: DEEPER_SYSTEM, prompt, maxTokens: 800 }, { signal: abort.signal })
+    const r = await $.model.complete({ model: d.model, system: DEEPER_SYSTEM, prompt, maxTokens: 800 }, { signal: abort.signal })
     if (r.isAnswered) {
       const tokens = r.usage.input_tokens + r.usage.output_tokens
-      result = { ...noDeeper, status: 'done', cardId, model, text: r.text, tokens }
+      const turn: DeepTurn = { question: q, answer: r.text, model: d.model, tokens }
+      const save = await runMeanwhile(
+        $,
+        ['deeper-save'],
+        JSON.stringify({ concept: d.conceptId, card: d.cardId, root_id: rootId, question: q, answer: r.text, model: d.model }),
+      )
+      const savedRoot = (save.data as { root_id?: number } | undefined)?.root_id ?? rootId
+      next = { ...d, status: 'done', turns: [...turns, turn], rootId: savedRoot, pending: '', error: '', note: save.error ? `Not saved: ${save.error}` : '' }
     } else if (r.reason === 'aborted') {
       return // Stop, or the person moved on
     } else {
       const why = r.reason === 'api-error' ? `Claude answered with an error (${r.status ?? 'no status'}).` : 'Claude sent an empty reply.'
-      result = { ...noDeeper, status: 'error', cardId, model, error: why }
+      next = { ...d, status: 'error', turns, rootId, error: why }
     }
   } catch (err) {
-    result = { ...noDeeper, status: 'error', cardId, model, error: String(err) }
+    next = { ...d, status: 'error', turns, rootId, error: String(err) }
   }
   if (deeperAbort !== abort) return // a newer call or a close replaced this one
   deeperAbort = undefined
-  await update($, deeper, () => result)
+  await update($, deeper, () => next)
+}
+
+// stopDeeper cuts a running call and goes back to what was there.
+async function stopDeeper($: EngineInterface) {
+  deeperAbort?.abort()
+  deeperAbort = undefined
+  const d = await read($, deeper)
+  await update($, deeper, () => (d.turns.length > 0 ? { ...d, status: 'done', pending: '' } : noDeeper))
 }
 
 async function closeDeeper($: EngineInterface) {
@@ -260,7 +314,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text, Button, Input } = $.ui.resolve(e)
     const v = await read($, view)
     const l = await read($, lesson)
     const failed = await read($, lessonError)
@@ -319,19 +373,38 @@ export const register: Register = on => {
           ‹ Back to card
         </Button>
       )
-      if (d.status === 'consent') {
+      const followUpsLeft = d.maxFollowUps - Math.max(d.turns.length - 1, 0)
+      // The conversation so far: the first answer, then each follow-up.
+      const thread = d.turns.map((t, i) => (
+        <Box key={`t-${i}`} flexDirection="column">
+          {i > 0 ? <Text bold>You: {t.question}</Text> : null}
+          {i > 0 ? <Text> </Text> : null}
+          {plain(t.answer).map((p, j) => (
+            <Box key={`t-${i}-${j}`} flexDirection="column">
+              <Text>{p}</Text>
+              <Text> </Text>
+            </Box>
+          ))}
+          {t.tokens ? <Text dimColor>Used about {t.tokens} tokens of your Claude usage.</Text> : null}
+          {t.tokens ? <Text> </Text> : null}
+        </Box>
+      ))
+      if (d.status === 'loading') {
+        body = <Text dimColor>Opening your explanation…</Text>
+      } else if (d.status === 'consent') {
         body = (
           <Box flexDirection="column">
             <Text bold>Go deeper with Claude</Text>
             <Text> </Text>
-            <Text>Claude explains this card in more depth, building on what you've read.</Text>
+            <Text>Claude explains this card in more depth, and you can ask follow-up questions.</Text>
             <Text> </Text>
             <Text color="warning">
               This uses your own Claude account. On a Pro or Max plan it counts toward your usage limits; with an
               API key it costs API credits.
             </Text>
             <Text dimColor>
-              Each answer is one short request with only the card's text: no tools, no access to your files.
+              Each answer is one short request with only the card and your conversation about it: no tools, no access
+              to your files. Answers are saved on this computer, so reopening one costs nothing.
             </Text>
             <Text> </Text>
             <Text>Which model should it use? (Remembered; you can change it later.)</Text>
@@ -342,59 +415,74 @@ export const register: Register = on => {
               <Button key="model-sonnet" onPress={() => chooseDeeperModel($, 'sonnet')}>
                 Sonnet · deeper answers
               </Button>
-              <Button key="model-no" dimColor onPress={() => closeDeeper($)}>
-                Not now
+              <Button key="model-no" dimColor onPress={() => (d.turns.length > 0 ? update($, deeper, () => ({ ...d, status: 'done' })) : closeDeeper($))}>
+                {d.turns.length > 0 ? 'Keep current' : 'Not now'}
               </Button>
             </Box>
-          </Box>
-        )
-      } else if (d.status === 'asking') {
-        body = (
-          <Box flexDirection="column">
-            <Text dimColor>
-              Asking Claude ({d.model}) about "{l.card.title}"…
-            </Text>
-            <Text> </Text>
-            <Button key="deeper-stop" onPress={() => closeDeeper($)}>
-              Stop
-            </Button>
           </Box>
         )
       } else {
         body = (
           <Box flexDirection="column">
             <Text color="claude">
-              Going deeper · {l.card.title} · {d.model}
+              Going deeper · {l.card.title}
+              {d.model ? ` · ${d.model}` : ''}
             </Text>
             <Text> </Text>
-            {d.status === 'error' ? (
-              <Text color="error">{d.error}</Text>
-            ) : (
-              plain(d.text).map((p, i) => (
-                <Box key={`d-${i}`} flexDirection="column">
-                  <Text>{p}</Text>
-                  <Text> </Text>
+            {thread}
+            {d.status === 'asking' ? (
+              <Box flexDirection="column">
+                {d.turns.length > 0 ? <Text bold>You: {d.pending}</Text> : null}
+                <Text dimColor>Asking Claude ({d.model})…</Text>
+                <Text> </Text>
+                <Button key="deeper-stop" onPress={() => stopDeeper($)}>
+                  Stop
+                </Button>
+              </Box>
+            ) : null}
+            {d.status === 'error' ? <Text color="error">{d.error}</Text> : null}
+            {d.note !== '' ? <Text dimColor>{d.note}</Text> : null}
+            {d.status === 'done' && followUpsLeft > 0 ? (
+              <Box flexDirection="column">
+                <Text dimColor>
+                  Ask a follow-up ({followUpsLeft} left):
+                </Text>
+                <Box flexDirection="row" gap={2}>
+                  {SUGGESTIONS.map((q, i) => (
+                    <Button key={`suggest-${i}`} dimColor onPress={() => askDeeper($, q, false)}>
+                      {q}
+                    </Button>
+                  ))}
                 </Box>
-              ))
-            )}
-            {d.status === 'done' ? (
-              <Text dimColor>Used about {d.tokens} tokens of your Claude usage.</Text>
+                <Input
+                  key="ask-own"
+                  placeholder="Or type your own question and press Enter"
+                  submitLabel="Ask"
+                  onSubmit={(value: string) => askDeeper($, value, false)}
+                />
+              </Box>
+            ) : null}
+            {d.status === 'done' && followUpsLeft <= 0 ? (
+              <Text dimColor>That's all the follow-ups for this explanation. "Ask again" starts a fresh one.</Text>
             ) : null}
             <Text> </Text>
             <Box flexDirection="row" gap={2}>
               {back}
               {d.status === 'error' ? (
-                <Button key="deeper-retry" onPress={() => askDeeper($, d.model)}>
+                <Button key="deeper-retry" onPress={() => askDeeper($, d.pending || FIRST_QUESTION, d.turns.length === 0)}>
                   Try again
                 </Button>
               ) : null}
-              <Button
-                key="deeper-model"
-                dimColor
-                onPress={() => update($, deeper, () => ({ ...noDeeper, status: 'consent' }))}
-              >
-                Change model
-              </Button>
+              {d.status === 'done' ? (
+                <Button key="deeper-again" dimColor onPress={() => askDeeper($, FIRST_QUESTION, true)}>
+                  Ask again
+                </Button>
+              ) : null}
+              {d.status !== 'asking' ? (
+                <Button key="deeper-model" dimColor onPress={() => update($, deeper, () => ({ ...d, status: 'consent' }))}>
+                  Change model
+                </Button>
+              ) : null}
             </Box>
           </Box>
         )
@@ -430,7 +518,7 @@ export const register: Register = on => {
               I know this
             </Button>
             <Button hotkey="d" onPress={() => openDeeper($)}>
-              Go deeper
+              {l.card.has_deeper ? '📖 Your explanation' : 'Go deeper'}
             </Button>
           </Box>
         </Box>

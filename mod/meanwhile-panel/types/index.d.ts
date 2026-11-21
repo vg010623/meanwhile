@@ -25,6 +25,7 @@ export type CardInfo = {
   title: string
   body: string // Markdown
   recap?: string
+  has_deeper?: boolean // a saved "Go deeper" explanation exists
 }
 
 export type Lesson = {
@@ -40,14 +41,28 @@ export type Lesson = {
   notice?: string
 }
 
-// "Go deeper": one model call through the person's own Claude session.
+// "Go deeper": a conversation about one card, through the person's own
+// Claude session, saved in the Go app's database (shared with the
+// terminal app).
+export type DeepTurn = {
+  question: string
+  answer: string
+  status?: string
+  model?: string
+  tokens?: number // only for answers from this session
+}
+
 export type DeeperView = {
-  status: 'idle' | 'consent' | 'asking' | 'done' | 'error'
-  cardId: string // the card it is about
+  status: 'idle' | 'loading' | 'consent' | 'asking' | 'done' | 'error'
+  conceptId: string
+  cardId: string
   model: string
-  text: string
+  rootId: number // the saved thread; 0 before the first answer is saved
+  turns: DeepTurn[]
+  maxFollowUps: number
+  pending: string // the question being asked
   error: string
-  tokens: number // input + output, to show what it used
+  note: string // e.g. "couldn't save"
 }
 
 declare module 'claude-code' {

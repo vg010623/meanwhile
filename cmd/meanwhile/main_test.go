@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,5 +279,44 @@ func TestUninstallRemovesPanel(t *testing.T) {
 	run([]string{"uninstall", "--settings", filepath.Join(t.TempDir(), "s.json"), "--yes"}, te.env)
 	if len(*calls) != 1 || (*calls)[0] != "plugin uninstall meanwhile-panel@meanwhile" {
 		t.Errorf("claude calls %v", *calls)
+	}
+}
+
+func TestLessonDeeperRoundTrip(t *testing.T) {
+	home := t.TempDir() // every run below shares one data folder
+	shared := paths.Paths{State: filepath.Join(home, "state"), Config: filepath.Join(home, "config")}
+	save := func(stdin string) map[string]any {
+		t.Helper()
+		te := newTestEnv(t, stdin)
+		te.paths = shared
+		run([]string{"lesson", "deeper-save"}, te.env)
+		var got map[string]any
+		if err := json.Unmarshal(te.out.Bytes(), &got); err != nil {
+			t.Fatalf("not JSON: %q %s", te.out, te.errOut)
+		}
+		return got
+	}
+	got := save(`{"concept":"tokens","card":"text-becomes-numbers","root_id":0,"question":"Explain this card more deeply.","answer":"An answer.","model":"haiku"}`)
+	root, _ := got["root_id"].(float64)
+	if root == 0 {
+		t.Fatalf("save: %v", got)
+	}
+	save(fmt.Sprintf(`{"concept":"tokens","card":"text-becomes-numbers","root_id":%d,"question":"why?","answer":"Because."}`, int64(root)))
+
+	te := newTestEnv(t, "")
+	te.paths = shared
+	run([]string{"lesson", "deeper", "tokens", "text-becomes-numbers"}, te.env)
+	var thread struct {
+		RootID int64 `json:"root_id"`
+		Turns  []struct {
+			Question, Answer string
+		} `json:"turns"`
+		MaxFollowUps int `json:"max_follow_ups"`
+	}
+	if err := json.Unmarshal(te.out.Bytes(), &thread); err != nil || thread.RootID != int64(root) || len(thread.Turns) != 2 || thread.Turns[1].Answer != "Because." || thread.MaxFollowUps != 3 {
+		t.Errorf("thread: %+v %v %s", thread, err, te.out)
+	}
+	if got := save(`{"concept":"tokens","card":"nope","answer":"x"}`); got["error"] == nil {
+		t.Errorf("bad card accepted: %v", got)
 	}
 }

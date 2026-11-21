@@ -9,9 +9,12 @@ import (
 )
 
 const lessonUsage = `Usage: meanwhile lesson current|next|back|known|pick|start ID
+       meanwhile lesson deeper CONCEPT CARD
+       meanwhile lesson deeper-save < {"concept","card","root_id","question","answer","model"}
 
-Prints the lesson screen as JSON, for the Claude Code panel. next, back,
-known and start save progress, shared with the terminal app.
+Prints JSON for the Claude Code panel. next, back, known and start save
+progress; deeper-save saves a "Go deeper" answer. Both are shared with the
+terminal app.
 `
 
 // cmdLesson runs one lesson action and prints the result as JSON. Errors are
@@ -38,7 +41,7 @@ func cmdLesson(args []string, e env) int {
 		return fail(err)
 	}
 
-	var res learn.Lesson
+	var res any
 	switch args[0] {
 	case "current":
 		res, err = l.Current()
@@ -56,6 +59,25 @@ func cmdLesson(args []string, e env) int {
 			return 2
 		}
 		res, err = l.StartConcept(args[1])
+	case "deeper":
+		if len(args) < 3 {
+			fmt.Fprint(e.stderr, lessonUsage)
+			return 2
+		}
+		res, err = l.DeepThreadFor(args[1], args[2])
+	case "deeper-save":
+		var in struct {
+			Concept string `json:"concept"`
+			Card    string `json:"card"`
+			RootID  int64  `json:"root_id"`
+			learn.DeepTurn
+		}
+		if err := json.NewDecoder(e.stdin).Decode(&in); err != nil {
+			return fail(fmt.Errorf("reading the answer to save: %w", err))
+		}
+		var root int64
+		root, err = l.SaveDeepTurn(in.Concept, in.Card, in.RootID, in.DeepTurn)
+		res = map[string]int64{"root_id": root}
 	default:
 		fmt.Fprint(e.stderr, lessonUsage)
 		return 2
