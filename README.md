@@ -2,7 +2,7 @@
 
 Learn AI fundamentals in the seconds and minutes you spend waiting on Claude Code.
 
-When you give Claude Code a prompt, you wait. Most of us reach for our phone, and then come back late with the thread lost. `meanwhile` shows lessons right next to Claude: in a panel inside Claude Code's own window, in a split pane beside it, or both (you choose at setup). It stays quiet until Claude starts working, then shows a short lesson card, readable in 20 to 40 seconds, about how AI actually works: models, tokens, embeddings, attention, context windows, agents. When Claude finishes or needs you, it says so clearly, and you go back to work on time.
+When you give Claude Code a prompt, you wait. Most of us reach for our phone, and then come back late with the thread lost. `meanwhile` shows lessons right next to Claude: in a panel inside Claude Code's own window, in a split pane beside it, or both (you choose at setup). It stays quiet until Claude starts working, then shows a short lesson card, readable in 20 to 40 seconds, about how AI actually works: models, tokens, context windows, next-token prediction, hallucinations, and working well with agents (more lessons are on the way). When Claude finishes or needs you, it says so clearly, and you go back to work on time.
 
 https://github.com/user-attachments/assets/7c27ddfe-a31d-4a51-af38-7c7d4c24a5c6
 
