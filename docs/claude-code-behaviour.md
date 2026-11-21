@@ -55,7 +55,7 @@ Checked with the prototype `mod/meanwhile-panel`, loaded by hot reload into an i
 - **`turn.start` → `$.clock.after(4000)` → `$.ui.open`** opens the panel beside the transcript while Claude is working. The panel draws and redraws mid-turn, whenever a `$.state` value it read is written.
 - **`turn.complete`** fires at the end of the turn with `reason: 'answer'` ("✔ Claude finished").
 - **Esc mid-turn: `turn.complete` fires at once with `reason: 'aborted'`.** The panel showed "■ Claude stopped" instantly. This closes the hooks' biggest gap (no hook fires on Esc).
-- **Permission dialog** (default mode, `ls -la /tmp`): a `tool.check` hook saw `decision: 'ask'` before the dialog, and the panel showed "needs your input". The end of that call's `tool.call` `next(e)` brought it back.
+- **Permission dialog:** use **`classic.PermissionRequest`**, not `tool.check`. In **auto** mode, `tool.check` returns `ask` for most shell commands, which the classifier then approves with no dialog. The panel showed "needs your input" during every command (owner's report, 21 Nov 2026). `classic.PermissionRequest` fires only when a dialog is really shown: an auto-mode session with 151 tool calls had 14, which matched the dialogs seen. After switching, a 10-second shell command in auto mode kept the panel on "Claude is working". The end of the call's `tool.call` `next(e)` brings the panel back.
 - **AskUserQuestion:** `tool.call` with `tool === 'AskUserQuestion'` blocks until the person answers, and the panel showed "needs your input" for the whole time.
 - **Buttons respond to a mouse click** (`onPress`), and the panel redraws with the new state.
 - **Not working:** focusing the panel with **ctrl+x then tab**, to use the `hotkey` letters (n/b/x), did nothing for the owner. Clicking works, so it isn't blocking. Still to investigate: the focus chord on this build, or `open({ focus: true })`.
@@ -64,5 +64,5 @@ Checked with the prototype `mod/meanwhile-panel`, loaded by hot reload into an i
 ## Not yet verified
 
 - `StopFailure` payload: documented as carrying `error_type`. We read `error_type` and fall back to `error`.
-- Mod: whether `tool.check` returns `ask` in **auto** mode for a call the classifier then approves without a dialog. If it does, the panel would flash "needs your input" with no dialog on screen.
+- Mod: whether a `classic.PermissionRequest` hook's `next(e)` waits for the person's answer. If it does, the panel could resume the moment Allow is clicked, instead of when the command ends.
 - Mod: how a panel opened while the window is under 144 columns behaves (it is documented to wait undrawn).

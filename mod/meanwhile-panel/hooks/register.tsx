@@ -145,13 +145,30 @@ function plain(md: string): string[] {
     .filter(p => p !== '')
 }
 
+// Module state; a reload starts it over.
+let turnId = ''
+let timer: { cancel: () => void } | undefined
+let isOpen = false
+let wantsOpen = false // the grace delay passed while Claude was blocked
+// What Claude is waiting on the person for: an AskUserQuestion call's
+// tool_use_id, PERMISSION for a permission dialog, or '' for nothing.
+let blockedBy = ''
+const PERMISSION = 'permission-dialog'
+
+// unblock goes back to "working" once the person has answered.
+async function unblock($: EngineInterface) {
+  blockedBy = ''
+  const v = await read($, view)
+  if (v.phase !== 'blocked') return
+  await setPhase($, 'working')
+  if (wantsOpen && !isOpen) {
+    wantsOpen = false
+    await openPanel($)
+    isOpen = true
+  }
+}
+
 export const register: Register = on => {
-  // Module state; a reload starts it over.
-  let turnId = ''
-  let timer: { cancel: () => void } | undefined
-  let isOpen = false
-  let wantsOpen = false // the grace delay passed while Claude was blocked
-  let blockedBy = '' // tool_use_id of the call that is waiting on the person
 
   // /meanwhile opens the panel at any time: after closing it by mistake, or
   // for a lesson while Claude isn't working. Asked for, it seats at any width.
@@ -209,14 +226,20 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // A verdict of "ask" means a permission dialog is about to be shown.
-  on('tool.check', async ($, e, next) => {
-    const verdict = await next(e)
-    if (verdict.decision === 'ask' && e.tool_use_id && turnId) {
-      blockedBy = e.tool_use_id
-      await setPhase($, 'blocked')
-    }
-    return verdict
+  // A permission dialog is about to be shown. (Not tool.check's "ask": in
+  // auto mode most asks are approved by the classifier with no dialog, and
+  // the panel wrongly said "needs your input" for every shell command.)
+  on('classic.PermissionRequest', async ($, e, next) => {
+    if (!turnId) return next(e)
+    blockedBy = PERMISSION
+    await setPhase($, 'blocked')
+    const started = await $.clock.now()
+    const answer = await next(e)
+    const waited = (await $.clock.now()) - started
+    // If the chain waited for the dialog, the person has answered: resume
+    // now rather than when the command finishes.
+    if (waited > 1500 && blockedBy === PERMISSION) await unblock($)
+    return answer
   })
 
   on('tool.call', async ($, e, next) => {
@@ -225,17 +248,8 @@ export const register: Register = on => {
       await setPhase($, 'blocked')
     }
     const result = await next(e)
-    if (blockedBy !== '' && blockedBy === e.tool_use_id) {
-      blockedBy = ''
-      const v = await read($, view)
-      if (v.phase === 'blocked') {
-        await setPhase($, 'working')
-        if (wantsOpen && !isOpen) {
-          wantsOpen = false
-          await openPanel($)
-          isOpen = true
-        }
-      }
+    if (blockedBy !== '' && (blockedBy === e.tool_use_id || blockedBy === PERMISSION)) {
+      await unblock($)
     }
     return result
   })
