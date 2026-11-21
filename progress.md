@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**v1 (M0–M6) and M7 are done; in beta.** `v0.1.0-beta.2` is public (repo public since 21 Nov 2026). Before **beta 3**: add the website agent's remaining ~10 beta concepts (the owner reviews every card for accuracy; see "Beta curriculum" below), then tag `v0.1.0-beta.3` and delete beta 2. Beta 3 is needed because the panel (installed from `main`) now calls `meanwhile lesson deeper` and `deeper-save`, which beta 2's binary lacks. Lessons show in a panel inside Claude Code (the `meanwhile-panel` plugin, installed by `meanwhile setup`), in the terminal app, or both; progress is shared. Next: the M7 follow-ups below, then "What's left on v1" (above all, writing the real curriculum and making the repo public).
+**v1 (M0–M6) and M7 are done; in beta.** `v0.1.0-beta.2` is public (repo public since 21 Nov 2026). Before **beta 3**: add the website agent's remaining 11 beta concepts (the owner reviews every card for accuracy; see "Beta curriculum" below), then tag `v0.1.0-beta.3` and delete beta 2. Beta 3 is needed because the panel (installed from `main`) now calls `meanwhile lesson deeper` and `deeper-save`, which beta 2's binary lacks. Lessons show in a panel inside Claude Code (the `meanwhile-panel` plugin, installed by `meanwhile setup`), in the terminal app, or both; progress is shared. Next: the M7 follow-ups below, then "What's left on v1" (above all, writing the real curriculum and making the repo public).
 
 ## M7: lessons inside Claude Code's window ("Option A")
 
@@ -90,8 +90,8 @@ Layers: **core** (events, spool, wait state machine: knows nothing about learnin
 
 Drafts come from an AI agent; the owner reviews every card before it ships. Format: `docs/content-format.md`.
 - **Done (4):** what-is-a-model, tokens, context-window, context-engineering.
-- **For beta 3 (10):** next-token-prediction [tokens], hallucinations [next-token-prediction] (drop pretraining-vs-posttraining from its prerequisites for now), statelessness-and-chat [context-window], system-prompts [context-window], tool-use [tokens], the-agent-loop [tool-use, statelessness-and-chat], prompt-caching [statelessness-and-chat], compaction [statelessness-and-chat], verification-loops [tool-use, hallucinations], subagents-and-isolation [context-engineering], when-to-reset [context-engineering].
-- **Later (6):** sampling-and-temperature, attention, lost-in-the-middle (careful: an older-model finding), pretraining-vs-posttraining, reasoning-and-thinking.
+- **For beta 3 (11):** next-token-prediction [tokens], hallucinations [next-token-prediction] (drop pretraining-vs-posttraining from its prerequisites for now), statelessness-and-chat [context-window], system-prompts [context-window], tool-use [tokens], the-agent-loop [tool-use, statelessness-and-chat], prompt-caching [statelessness-and-chat], compaction [statelessness-and-chat], verification-loops [tool-use, hallucinations], subagents-and-isolation [context-engineering], when-to-reset [context-engineering].
+- **Later (5):** sampling-and-temperature, attention, lost-in-the-middle (careful: an older-model finding), pretraining-vs-posttraining, reasoning-and-thinking.
 - Tracks and orders: foundations 10–30, how-models-work 40–100, from-model-to-agent 110–150, using-agents-well 160–200.
 
 ## Near-term direction (owner, 21 Nov 2026): more than static lessons
