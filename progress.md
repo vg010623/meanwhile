@@ -4,7 +4,7 @@ Handoff file. A new session should be able to start from this alone. Keep it cur
 
 ## Current status
 
-**v1 (M0–M6) and M7 are done; in beta.** `v0.1.0-beta.2` is public (repo public since 21 Nov 2026). Before **beta 3**: add the website agent's remaining 11 beta concepts (the owner reviews every card for accuracy; see "Beta curriculum" below), then tag `v0.1.0-beta.3` and delete beta 2. Beta 3 is needed because the panel (installed from `main`) now calls `meanwhile lesson deeper` and `deeper-save`, which beta 2's binary lacks. Lessons show in a panel inside Claude Code (the `meanwhile-panel` plugin, installed by `meanwhile setup`), in the terminal app, or both; progress is shared. Next: the M7 follow-ups below, then "What's left on v1" (above all, writing the real curriculum and making the repo public).
+**v1 (M0–M6) and M7 are done; in beta.** `v0.1.0-beta.2` is public (repo public since 21 Nov 2026). Before **beta 3**: add the website agent's remaining 11 beta concepts (the owner reviews every card for accuracy; see "Beta curriculum" below), then tag `v0.1.0-beta.3` and delete beta 2. Beta 3 is needed because the panel (installed from `main`) now calls `meanwhile lesson deeper` and `deeper-save`, which beta 2's binary lacks. Lessons show in a panel inside Claude Code (the `meanwhile-panel` plugin, installed by `meanwhile setup`), in the terminal app, or both; progress is shared. Next: the M7 follow-ups below, then "What's left on v1" (above all, the rest of the curriculum; the repo is already public).
 
 ## M7: lessons inside Claude Code's window ("Option A")
 
